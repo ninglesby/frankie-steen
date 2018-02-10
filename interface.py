@@ -48,12 +48,12 @@ class FrankiesLog:
 
 
 
-# a thread class
+# a thread classns\n\
 
 # a thread class to allow asynchronous changes to the light
 class LightThread(threading.Thread):
 	
-	def __init__(self, name='LightThread', lite=False):
+	def __init__(self, name='LightThread', logger="" lite=False):
 		""" constructor, setting initial variables """
 		#MODE 0: Off
 		#MODE 1: Cycle through all the hues at 100% brightness
@@ -72,6 +72,7 @@ class LightThread(threading.Thread):
 		self.color = [0,0,0]
 		self.break_routine = False
 		self.current_mode = 0
+		self.logger = logger
 		threading.Thread.__init__(self, name=name)
 
 	def run(self):
@@ -178,7 +179,7 @@ class LightThread(threading.Thread):
 # Controls for RGB light on a raspberry pi
 class RGBLightController():
 	
-	def __init__(self, red=27, green=17, blue=26, freq=200):
+	def __init__(self, logger="" red=27, green=17, blue=26, freq=200):
 
 		GPIO.setup(red, GPIO.OUT)
 		GPIO.setup(green, GPIO.OUT)
@@ -191,6 +192,8 @@ class RGBLightController():
 		self.pwm_g.start(0)
 		self.pwm_b.start(0)
 		
+		self.logger = logger
+
 	def hsl(self, h, s, l):
 		saturation = s/100.0
 		luminance = l/100.0
@@ -242,18 +245,19 @@ class RGBLightController():
 # class to handle status operations
 class Status()
 
-	def __init__(self):
+	def __init__(self, logger=""):
 
 		#initialize lights on the Raspberry Pi
-		self.lite = RGBLightController(	red=config.GPIO_STATUS_RED,
+		self.lite = RGBLightController(	logger=logger
+										red=config.GPIO_STATUS_RED,
 										green=config.GPIO_STATUS_GREEN,
 										blue=config.GPIO_STATUS_BLUE)
 
 		#initalize light thread
-		self.lightthread = LightThread(lite=self.lite)
-
-
+		self.lightthread = LightThread( logger=logger lite=self.lite)
 		self.lightthread.start()
+
+		self.logger = logger
 
 		self.current_status = ""
 
@@ -262,26 +266,31 @@ class Status()
 		lightthread.color = [0,100,0] # green
 		lightthread.mode = 2 # constant
 		self.current_status = "nominal"
+		logger.info("Status changed to nominal")
 
 	def warning(self):
 
 		lightthread.color = [75, 75, 0] # yellow
 		lightthread.mode = 7 # medium pulse
 		self.current_status = "warning"
+		logger.warning("Status changed to warning")
 
 	def critical(self):
 
 		lightthread.color = [100, 0, 0] # red
 		lightthread.mode = 4 # medium blink
 		self.current_status = "critical"
+		logger.error("Status changed to critical")
 
 	def operating(self)
 
 		lightthread.color = [50, 50, 50] # white
 		lightthread.mode = 6 # slow pulse
 		self.current_status = "operating"
+		logger.info("Status changed to operating")
 
 	def success(self)
 
 		lightthread.mode = 1 # rgb cylce funtime
 		self.current_status = "success"
+		logger.info("Status changed to success")
