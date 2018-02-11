@@ -1,14 +1,112 @@
 import logging
+import os
 
 import RPi.GPIO as GPIO
+import Adafruit_ADS1x15
 
 import config
 import physical_control
 import interface
 
+def btn_power_short(logger, status):
 
+    
+
+    status.initial_engage()
+
+    def null_report(logger):
+        logger.info("Nothing assigned to power button short short_hold")
+
+
+    return [null_report, logger]
+
+
+def btn_power_medium(logger, status, cleaner):
+
+
+    status.warning()
+
+    def shutdown_app(logger, cleaner):
+        
+        logger.info("Shutting down frankie_steen program")
+        cleaner.cleanup()
+        GPIO.cleanup()
+
+    return [shutdown_app, logger, cleaner]
+
+
+def btn_power_long(logger, status, cleaner):
+
+    status.critical()
+
+    def shutdown_total(logger, cleaner):
+
+        logger.warning("Shutting down System")
+        cleaner.cleanup()
+        GPIO.cleanup()
+        os.system("shutdown now -h")
+
+    return [shutdown_total, logger, cleaner]
+
+def btn_calibrate_short(logger, status, camera):
+
+    status.initial_engage()
+
+    def shutter_release(logger, status, camera):
+
+        logger.info("Shutter Test Release")
+        camera.shutter_release()
+        status.snap()
+
+    return [shutter_release, logger, status, camera]
+
+
+def btn_calibrate_med(logger, status):
+
+    status.warning()
+
+    def reset_position_frame_count(logger, status):
+
+        config.ROTATION = 0
+        config.FRAME_COUNT = 0
+
+        logger.info("Reset Rotation and Frame Count to 0")
+        status.success()
+
+    return [reset_position_frame_count, logger, status]
+
+
+def btn_calibrate_long(logger, status):
+
+    status.critical()
+
+    def reset_total_frame_count(logger, status):
+
+        physical_control.increment_frame_count(reset=True)
+        logger.info("Reset Frame Count and Lifetime Frame Count to 0")
+        status.success()
+
+    return [reset_total_frame_count, logger, status]
+
+
+class Cleanup():
+
+    def __init__(self):
+
+        self.cleanup_list = []
+
+    def clean_all(self):
+
+        for item in self.cleanup_list:
+
+            item.cleanup()
 
 def main():
+
+    cleaner = Cleanup()
+
+    #initialize 4 channel 16-bit analog to digital converter
+    adc = Adafruit_ADS1x15.ADS1115()
 
     # Create an instance of the logger
     frankies_log = interface.FrankiesLog().logger
@@ -23,21 +121,46 @@ def main():
 
     # Initialize status object
     status = interface.Status(frankies_log)
+    cleaner.cleanup_list.append(status)
+
     frankies_log.info("Initializing status object")
     status.nominal() # set status to nominal
 
     # Output logger info
     frankies_log.info("Starting up the frankie_steen")  
 
+    camera = physical_control.Camera(pin=config.GPIO_CAMERA_SHUTTER)
+    cleaner.cleanup_list.append(camera)
+
     # setup knobs for control
-    knob_select = interface.KnobSelect(pin=config.ADC_KNOB_0)
-    knob_spring = interface.KnobSweep(pin=config.ADC_KNOB_1)
+    knob_select = interface.Knob(   pin=config.ADC_KNOB_0, adc=adc, mode=config.KNOB_SELECT, selections=2 )
+    cleaner.cleanup_list.append(knob_select)
+    knob_spring = interface.Knob(   pin=config.ADC_KNOB_1, adc=adc, mode=config.KNOB_SWEEP, sweep_range=[-1,1] )
+    cleaner.cleanup_list.append(knob_spring)
 
-    toggle_run = interface.Toggle(pin=config.GPIO_TOGGLE_RUN)
-    toggle_uptake = interface.Toggle(pin=config.GPIO_TOGGLE_UPTAKE)
+    toggle_run = interface.Toggle(  pin=config.GPIO_TOGGLE_RUN)
+    cleaner.cleanup_list.append(toggle_run)
 
-    btn_power = interface.Button(pin=config.GPIO_BTN_POWER)
-    btn_calibrate = interface.Button(pin=config.GPIO_BTN_CALIBRATE)
+    toggle_uptake = interface.Toggle(   pin=config.GPIO_TOGGLE_UPTAKE)
+    cleaner.cleanup_list.append(toggle_uptake)
+
+    btn_power = interface.Button(   pin=config.GPIO_BTN_POWER,
+                                    short_hold=btn_power_short,
+                                    short_args=[frankies_log, status],
+                                    med_hold=btn_power_med,
+                                    med_args=[frankies_log, status, cleaner],
+                                    long_hold=btn_power_long,
+                                    long_args=[frankies_log, status, cleaner])
+    cleaner.cleanup_list.append(btn_power)
+
+    btn_calibrate = interface.Button(   pin=config.GPIO_BTN_CALIBRATE,
+                                        short_hold=btn_calibrate_short,
+                                        short_args=[frankies_log, status, camera],
+                                        med_hold=btn_calibrate_med,
+                                        med_args=[frankies_log, status],
+                                        long_hold=btn_power_long,
+                                        long_args=[frankies_log, status])
+    cleaner.cleanup_list.append(btn_calibrate)
 
     stepper_sprocket = physical_control.Stepper(    dir_pin=config.GPIO_STEPPER_0_DIR,
                                                     on_pin=config.GPIO_STEPPER_0_ON,
@@ -45,32 +168,35 @@ def main():
                                                     mode0_pin=config.GPIO_STEPPER_0_MODE0,
                                                     mode1_pin=config.GPIO_STEPPER_0_MODE1,
                                                     mode2_pin=config.GPIO_STEPPER_0_MODE2 )
+    cleaner.cleanup_list.append(stepper_sprocket)
 
-    camera = physical_control.Camera(pin=config.GPIO_CAMERA_SHUTTER)
+    uptake_reel = physical_control.UptakeReel(  knob=toggle_run,
+                                                dir_pin=config.GPIO_STEPPER_1_DIR,
+                                                on_pin=config.GPIO_STEPPER_1_ON,
+                                                step_pin=config.GPIO_STEPPER_1_STEP,)
+    cleaner.cleanup_list.append(uptake_reel)
 
 
 
 
-    shutdown = False
 
 
     #mainloop
     try:
-        current_mode = knob_select.get_mode()
+        current_mode = knob_select.get_selection()
         while not shutdown:
 
             # Manual Adjustment Mode
-            if knob_select.get_mode() == 0:
+            if knob_select.get_selection() == config.SELECT_MANUAL_ADJUST:
 
-                if current_mode != knob_select.get_mode:
+                if current_mode != knob_select.get_selection():
                     frankies_log.info("Changed to Manual Adjustment Mode")
+                    status.snap()
                     status.nominal()
 
                 speed = knob_spring.get_value()
-                direction = knob_spring.get_direction()
 
-                stepper_sprocket.speed = speed
-                stepper_sprocket.direction = direction
+                stepper_sprocket.set_speed(speed)
 
                 if not speed and stepper_sprocket.energized:
 
@@ -86,10 +212,11 @@ def main():
 
 
             # Run Scan Mode
-            if knob_select.get_mode() == 1:
+            if knob_select.get_selection() == config.SELECT_RUN:
 
-                if current_mode != knob_select.get_mode:
+                if current_mode != knob_select.get_selection():
                     frankies_log.info("Changed to Run Mode")
+                    status.snap()
                     status.nominal()
 
 
@@ -106,6 +233,5 @@ def main():
 
         frankies_log.info("Keyboard Interrupt, cleaning up threads and GPIO")
 
-        status.cleanup()
-        physical_control.cleanup()
+        cleaner.cleanup()
 

@@ -186,7 +186,7 @@ class LightThread(threading.Thread):
 # Controls for RGB light on a raspberry pi
 class RGBLightController():
     
-    def __init__(self, logger="" red=27, green=17, blue=26, freq=200):
+    def __init__(self, logger="", red=27, green=17, blue=26, freq=200):
 
         GPIO.setup(red, GPIO.OUT)
         GPIO.setup(green, GPIO.OUT)
@@ -248,6 +248,11 @@ class RGBLightController():
             
         return red, green, blue
 
+    def cleanup(self):
+
+        GPIO.cleanup(self.red)
+        GPIO.cleanup(self.green)
+        GPIO.cleanup(self.blue)
 
 # class to handle status operations
 class Status()
@@ -312,3 +317,17 @@ class Status()
     def snap(self):
 
         self.lightthread.notify()
+
+    def initial_engage(self):
+
+        if self.current_status != "initial_engage":
+
+            self.lightthread.mode = 2
+            self.lightthread.color = [0,0,100] #blue
+            self.current_status = "intial_engage"
+            self.logger.info("Status changed to initial_engage")
+
+    def cleanup(self):
+        self.lightthread.join()
+        self.lite.cleanup()
+
