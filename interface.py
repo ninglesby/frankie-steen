@@ -138,7 +138,14 @@ class LightThread(threading.Thread):
 				on = False
 			else:
 				time.sleep(.01)
-	
+
+	def notify(self, mode_b, time):
+
+
+		for x in range(5):
+
+			blink(r=color[0], g=color[1], b=color[2], speed=.25)
+
 	def blink(self, r=100, g=100, b=100, speed=.5):
 
 		r = r/100.0
@@ -263,34 +270,45 @@ class Status()
 
 	def nominal(self):
 
-		lightthread.color = [0,100,0] # green
-		lightthread.mode = 2 # constant
-		self.current_status = "nominal"
-		logger.info("Status changed to nominal")
+		if self.current_status != "nominal":
+			self.lightthread.color = [0,100,0] # green
+			self.lightthread.mode = 2 # constant
+			self.current_status = "nominal"
+			self.logger.info("Status changed to nominal")
 
 	def warning(self):
-
-		lightthread.color = [75, 75, 0] # yellow
-		lightthread.mode = 7 # medium pulse
-		self.current_status = "warning"
-		logger.warning("Status changed to warning")
+		
+		if self.current_status != "warning":
+			self.lightthread.color = [75, 75, 0] # yellow
+			self.lightthread.mode = 7 # medium pulse
+			self.current_status = "warning"
+			self.logger.warning("Status changed to warning")
 
 	def critical(self):
-
-		lightthread.color = [100, 0, 0] # red
-		lightthread.mode = 4 # medium blink
-		self.current_status = "critical"
-		logger.error("Status changed to critical")
+		
+		if self.current_status != "critical":
+			self.lightthread.color = [100, 0, 0] # red
+			self.lightthread.mode = 4 # medium blink
+			self.current_status = "critical"
+			self.logger.error("Status changed to critical")
 
 	def operating(self)
 
-		lightthread.color = [50, 50, 50] # white
-		lightthread.mode = 6 # slow pulse
-		self.current_status = "operating"
-		logger.info("Status changed to operating")
+		
+		if self.current_status != "operating":
+			self.lightthread.color = [50, 50, 50] # white
+			self.lightthread.mode = 6 # slow pulse
+			self.current_status = "operating"
+			self.logger.info("Status changed to operating")
 
 	def success(self)
 
-		lightthread.mode = 1 # rgb cylce funtime
-		self.current_status = "success"
-		logger.info("Status changed to success")
+		
+		if self.current_status != "success":
+			self.lightthread.mode = 1 # rgb cylce funtime
+			self.current_status = "success"
+			self.logger.info("Status changed to success")
+
+	def snap(self):
+
+		self.lightthread.notify()
