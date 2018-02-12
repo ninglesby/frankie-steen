@@ -1,7 +1,11 @@
 import logging
 import threading
+import time
 
 import RPi.GPIO as GPIO
+
+import physical_control
+import config
 
 
 
@@ -43,8 +47,8 @@ class FrankiesLog:
         self.fh.setFormatter(self.formatter)
 
         # add ch and fh to logger
-        logger.addHandler(self.ch)
-        logger.addHandler(self.fh)
+        self.logger.addHandler(self.ch)
+        self.logger.addHandler(self.fh)
 
 
 
@@ -53,7 +57,7 @@ class FrankiesLog:
 # a thread class to allow asynchronous changes to the light
 class LightThread(threading.Thread):
     
-    def __init__(self, name='LightThread', logger="" lite=False):
+    def __init__(self, name='LightThread', logger="", lite=False):
         """ constructor, setting initial variables """
         #MODE 0: Off
         #MODE 1: Cycle through all the hues at 100% brightness
@@ -106,29 +110,29 @@ class LightThread(threading.Thread):
                 ####BLINKS####  
                 while self.mode == 3 and not self._stopevent.isSet():
                     self.current_mode = self.mode
-                    self.blink(r=color[0],g=color[1], b=color[2], speed=1)
+                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=1)
 
                 while self.mode == 4 and not self._stopevent.isSet():
                     self.current_mode = self.mode
-                    self.blink(r=color[0],g=color[1], b=color[2], speed=.5)
+                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5)
 
                 while self.mode == 5 and not self._stopevent.isSet():
                     self.current_mode = self.mode
-                    self.blink(r=color[0],g=color[1], b=color[2], speed=.25)
+                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25)
 
 
                 ####PULSES####
                 while self.mode == 6 and not self._stopevent.isSet():
                     self.current_mode = self.mode
-                    self.pulse(r=color[0],g=color[1], b=color[2], speed=1, step_size=60)
+                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=1, step_size=60)
 
                 while self.mode == 7 and not self._stopevent.isSet():
                     self.current_mode= self.mode
-                    self.pulse(r=color[0],g=color[1], b=color[2], speed=.5, step_size=30)
+                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5, step_size=30)
 
                 while self.mode == 8 and not self._stopevent.isSet():
                     self.current_mode= self.mode
-                    self.pulse(r=color[0],g=color[1], b=color[2], speed=.25, step_size=15)
+                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25, step_size=15)
 
 
                     
@@ -137,14 +141,14 @@ class LightThread(threading.Thread):
                 self.lite.hsl(0,0,0)
                 on = False
             else:
-                time.sleep(.01)
+                time.sleep(.05)
 
-    def notify(self, mode_b, time):
+    def notify(self):
 
 
         for x in range(5):
 
-            blink(r=color[0], g=color[1], b=color[2], speed=.25)
+            self.blink(r=self.color[0], g=self.color[1], b=self.color[2], speed=.25)
 
     def blink(self, r=100, g=100, b=100, speed=.5):
 
@@ -191,6 +195,9 @@ class RGBLightController():
         GPIO.setup(red, GPIO.OUT)
         GPIO.setup(green, GPIO.OUT)
         GPIO.setup(blue, GPIO.OUT)
+        self.red = red
+        self.green = green
+        self.blue = blue
         self.pwm_r = GPIO.PWM(red, freq)
         self.pwm_g = GPIO.PWM(green, freq)
         self.pwm_b = GPIO.PWM(blue, freq)
@@ -255,18 +262,18 @@ class RGBLightController():
         GPIO.cleanup(self.blue)
 
 # class to handle status operations
-class Status()
+class Status():
 
     def __init__(self, logger=""):
 
         #initialize lights on the Raspberry Pi
-        self.lite = RGBLightController( logger=logger
+        self.lite = RGBLightController( logger=logger,
                                         red=config.GPIO_STATUS_RED,
                                         green=config.GPIO_STATUS_GREEN,
                                         blue=config.GPIO_STATUS_BLUE)
 
         #initalize light thread
-        self.lightthread = LightThread( logger=logger lite=self.lite)
+        self.lightthread = LightThread( logger=logger, lite=self.lite)
         self.lightthread.start()
 
         self.logger = logger
@@ -297,7 +304,7 @@ class Status()
             self.current_status = "critical"
             self.logger.error("Status changed to critical")
 
-    def operating(self)
+    def operating(self):
 
         
         if self.current_status != "operating":
@@ -306,7 +313,7 @@ class Status()
             self.current_status = "operating"
             self.logger.info("Status changed to operating")
 
-    def success(self)
+    def success(self):
 
         
         if self.current_status != "success":

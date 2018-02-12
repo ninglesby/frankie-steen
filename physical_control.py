@@ -23,8 +23,9 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
 
 class Stepper(threading.Thread):
     
-    def __init__(   self, name="Stepper", dir_pin=0, on_pin=0,
-                    step_pin=0, mode0_pin=0, mode1_pin=0, mode2_pin=0, knob=""):
+    def __init__(   self, logger="", name="Stepper", dir_pin=0, on_pin=0,
+                    step_pin=0, mode0_pin=0, mode1_pin=0, mode2_pin=0, knob="",
+                    mode="stepper"):
 
         self._stopevent = threading.Event( )
         GPIO.setup(dir_pin, GPIO.OUT)
@@ -40,17 +41,21 @@ class Stepper(threading.Thread):
         if mode2_pin:
             GPIO.setup(mode2_pin, GPIO.OUT)
 
-
+        self.dir_pin = dir_pin
+        self.on_pin = on_pin
+        self.step_pin = step_pin
         self.mode0_pin = mode0_pin
         self.mode1_pin = mode1_pin
         self.mode2_pin = mode2_pin
         self.speed = 0
         self.dir = 1
-        self.stop = True
+        self.energized = 1
+        self.stop = False
         self.steps = 0
         self.running_frame = False
         self.step_res_float = 1
         self.knob = knob
+        self.mode = mode
 
         threading.Thread.__init__(self, name=name)
 
@@ -64,26 +69,39 @@ class Stepper(threading.Thread):
 
             GPIO.output(self.dir_pin, self.dir)
 
-            if mode == "motor" and not self.stop:
+            if self.mode == "motor" and not self.stop:
 
 
-                GPIO.output(self.step, GPIO.HIGH)
-                GPIO.output(self.step, GPIO.LOW)
+                GPIO.output(self.step_pin, GPIO.HIGH)
+                GPIO.output(self.step_pin, GPIO.LOW)    
 
-                time.sleep(self.speed_convert(self.speed))
+                print self.speed
+                time.sleep(self.speed)
 
-            elif mode == "stepper" and self.steps:
+            elif self.mode == "stepper" and self.steps:
 
                 self.running_frame = True
 
                 for x in range(self.steps):
 
-                    GPIO.output(self.step, GPIO.HIGH)
-                    GPIO.output(self.step, GPIO.LOW)
+                    GPIO.output(self.step_pin, GPIO.HIGH)
+                    GPIO.output(self.step_pin, GPIO.LOW)
 
                 self.steps = 0
 
                 self.running_frame = False
+            else:
+                time.sleep(.1)
+
+    def turn_on(self):
+
+        GPIO.output(self.on_pin, GPIO.HIGH)
+        self.energized = 1
+
+    def turn_off(self):
+
+        GPIO.output(self.on_pin, GPIO.LOW)
+        self.energized = 0
 
     def set_speed(self, speed):
 
@@ -91,21 +109,38 @@ class Stepper(threading.Thread):
 
             self.dir = 0
 
-            speed = speed * -1
+            speed = abs(speed)
 
         else:
 
             self.dir = 1
 
-        if knob:
+        if self.knob:
 
             adjusted_threshold = abs((self.knob.sweep_range[1]-self.knob.sweep_range[0]) * config.ADC_KNOB_THRESHOLD)
 
             if speed < adjusted_threshold:
 
                 speed = 0
+                self.stop = True
 
-            self.speed = translate(speed, self.knob.sweep_range[0], self.knob.sweep_range[1], config.STEPPER_MIN, config.STEPPER_MAX)
+            else:
+
+                self.stop = False
+
+            speed = 1 - speed
+
+            speed = translate(speed, 0, 1, config.STEPPER_MAX, config.STEPPER_MIN)
+
+            if speed < config.STEPPER_MAX:
+
+                speed = config.STEPPER_MAX
+
+            elif speed > config.STEPPER_MIN:
+
+                speed = config.STEPPER_MIN
+
+            self.speed = speed
 
         else:
 
@@ -125,51 +160,53 @@ class Stepper(threading.Thread):
 
     def change_step_res(self, step_res):
 
-        config.STEPPER_RES = step_res
+        if self.mode0_pin and self.mode1_pin and self.mode2_pin:
 
-        if step_res == "1":
+            config.STEPPER_RES = step_res
 
-            self.step_res_float = 1.0
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            if step_res == "1":
 
-        elif step_res == "1/2":
+                self.step_res_float = 1.0
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
 
-            self.step_res_float = 0.5
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            elif step_res == "1/2":
 
-        elif step_res == "1/4":
+                self.step_res_float = 0.5
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
 
-            self.step_res_float = 0.25
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            elif step_res == "1/4":
 
-        elif step_res == "1/8":
+                self.step_res_float = 0.25
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
 
-            self.step_res_float = 0.125
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            elif step_res == "1/8":
 
-        elif step_res == "1/16":
+                self.step_res_float = 0.125
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
 
-            self.step_res_float = 0.0625
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            elif step_res == "1/16":
 
-        elif step_res == "1/16":
+                self.step_res_float = 0.0625
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
 
-            self.step_res_float = 0.03125
-            GPIO.output(self.MODE0_pin, 0)
-            GPIO.output(self.MODE1_pin, 0)
-            GPIO.output(self.MODE2_pin, 0)
+            elif step_res == "1/16":
 
-    def join(self, timeout=None):
+                self.step_res_float = 0.03125
+                GPIO.output(self.mode0_pin, 0)
+                GPIO.output(self.mode1_pin, 0)
+                GPIO.output(self.mode2_pin, 0)
+
+    def join(self, timeout=5.0):
         """ Stop the thread and wait for it to end. """
         self._stopevent.set( )
         threading.Thread.join(self, timeout)
@@ -178,31 +215,32 @@ class Stepper(threading.Thread):
 
         self._stopevent.set()
 
-        GPIO.cleanup(dir_pin)
-        GPIO.cleanup(on_pin)
-        GPIO.cleanup(step_pin)
+        GPIO.cleanup(self.dir_pin)
+        GPIO.cleanup(self.on_pin)
+        GPIO.cleanup(self.step_pin)
         
-        if mode0_pin:
-            GPIO.cleanup(mode0_pin)
+        if self.mode0_pin:
+            GPIO.cleanup(self.mode0_pin)
 
-        if mode1_pin:
-            GPIO.cleanup(mode1_pin)
+        if self.mode1_pin:
+            GPIO.cleanup(self.mode1_pin)
 
-        if mode2_pin:
-            GPIO.cleanup(mode2_pin)
+        if self.mode2_pin:
+            GPIO.cleanup(self.mode2_pin)
 
-        threading.Thread.join(self, None)
+        threading.Thread.join(self, 5.0 )
 
 
 class UptakeReel(threading.Thread):
 
-    def __init__(self, name=UptakeReel, knob="", dir_pin=0, on_pin=0, step_pin=0):
+    def __init__(self, name="UptakeReel", knob="", dir_pin=0, on_pin=0, step_pin=0):
 
         self._stopevent = threading.Event( )
 
         self.knob = knob
         
         self.movement = Stepper( dir_pin=dir_pin, on_pin=on_pin, step_pin=step_pin)
+        self.movement.start()
         
         self.poll_time = .01
         threading.Thread.__init__(self, name=name)
@@ -214,7 +252,7 @@ class UptakeReel(threading.Thread):
 
             GPIO.wait_for_edge(self.knob.pin, GPIO.BOTH)
 
-            while GPIO.output(self.knob.pin)
+            while GPIO.output(self.knob.pin):
 
                 speed = self.knob.get_value()
                 movement.speed = speed
@@ -223,7 +261,7 @@ class UptakeReel(threading.Thread):
 
 
 
-    def join(self, timeout=None):
+    def join(self, timeout=5.0):
         """ Stop the thread and wait for it to end. """
         self.movement.cleanup()
         self._stopevent.set( )
@@ -233,7 +271,7 @@ class UptakeReel(threading.Thread):
 
         self._stopevent.set()
         self.movement.cleanup()
-        threading.Thread.join(self, None)
+        threading.Thread.join(self, 5.0)
 
         
 
@@ -273,7 +311,7 @@ class Button(threading.Thread):
     def run(self):
 
         while not self._stopevent.isSet():
-            GPIO.wait_for_edge(self.pin)
+            GPIO.wait_for_edge(self.pin, GPIO.BOTH)
 
             start_time = time.time()
 
@@ -301,7 +339,7 @@ class Button(threading.Thread):
 
                 function(*output)
 
-    def join(self, timeout=None):
+    def join(self, timeout=5.0):
 
         self._stopevent.set( )
         threading.Thread.join(self, timeout)
@@ -310,25 +348,27 @@ class Button(threading.Thread):
 
         self._stopevent.set()
         GPIO.cleanup(self.pin)
-        threading.Thread.join(self, None)
+        threading.Thread.join(self, 5.0)
 
 
 
 
 
-class Toggle()
+class Toggle():
 
     def __init__(self, pin=0):
+
+        self.pin = pin
 
         GPIO.setup(pin, GPIO.IN)
 
     def get_value(self):
 
-        return GPIO.input(pin)
+        return GPIO.input(self.pin)
 
     def cleanup(self):
 
-        GPIO.cleanup(pin)
+        GPIO.cleanup(self.pin)
 
 class Knob():
 
@@ -359,17 +399,30 @@ class Knob():
 
         increments = full_range / self.selections
 
+
         for x in range(self.selections):
 
-            if value >= (x*self.knob_lo) and value < ((x+1)*self.knob_lo):
+            lo = x*increments
+            hi = lo + increments
 
-                return x
+
+            if value >= lo and value < hi:
+
+               return x
+            else:
+
+                return self.selections -1
+
+        time.sleep(1)
+
 
     def get_value(self):
 
         value = self.adc.read_adc(self.pin, gain=self.gain)
 
         mapped_value = translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1])
+
+        return mapped_value
 
     def cleanup(self):
 
@@ -393,7 +446,7 @@ class Camera():
         time.sleep(.1)
         GPIO.output(self.pin, GPIO_LOW)
 
-    def cleanup(self)
+    def cleanup(self):
 
         GPIO.cleanup(self.pin)
 

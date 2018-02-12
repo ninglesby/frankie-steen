@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 import RPi.GPIO as GPIO
 import Adafruit_ADS1x15
@@ -21,7 +22,7 @@ def btn_power_short(logger, status):
     return [null_report, logger]
 
 
-def btn_power_medium(logger, status, cleaner):
+def btn_power_med(logger, status, cleaner):
 
 
     status.warning()
@@ -91,19 +92,26 @@ def btn_calibrate_long(logger, status):
 
 class Cleanup():
 
-    def __init__(self):
+    def __init__(self, logger):
 
         self.cleanup_list = []
+        self.logger = logger
 
     def clean_all(self):
 
         for item in self.cleanup_list:
 
+            self.logger.info("Cleaning up %s" % item.__class__.__name__)
+
             item.cleanup()
+
+        self.logger.info("Cleanup Complete")
+
+        return
 
 def main():
 
-    cleaner = Cleanup()
+    
 
     #initialize 4 channel 16-bit analog to digital converter
     adc = Adafruit_ADS1x15.ADS1115()
@@ -111,9 +119,11 @@ def main():
     # Create an instance of the logger
     frankies_log = interface.FrankiesLog().logger
 
+    
+    cleaner = Cleanup(frankies_log)
     #set gpio mode status, doesn't return anything if it was successful 
     #returns message if there is an error.
-    gpio_mode_status = interface.set_gpio_mode():
+    gpio_mode_status = interface.set_gpio_mode()
 
     if gpio_mode_status:
 
@@ -133,18 +143,18 @@ def main():
     cleaner.cleanup_list.append(camera)
 
     # setup knobs for control
-    knob_select = interface.Knob(   pin=config.ADC_KNOB_0, adc=adc, mode=config.KNOB_SELECT, selections=2 )
+    knob_select = physical_control.Knob(   pin=config.ADC_KNOB_0, adc=adc, mode=config.ADC_KNOB_SELECT, selections=2 )
     cleaner.cleanup_list.append(knob_select)
-    knob_spring = interface.Knob(   pin=config.ADC_KNOB_1, adc=adc, mode=config.KNOB_SWEEP, sweep_range=[-1,1] )
+    knob_spring = physical_control.Knob(   pin=config.ADC_KNOB_1, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[-1,1] )
     cleaner.cleanup_list.append(knob_spring)
 
-    toggle_run = interface.Toggle(  pin=config.GPIO_TOGGLE_RUN)
+    toggle_run = physical_control.Toggle(  pin=config.GPIO_TOGGLE_RUN)
     cleaner.cleanup_list.append(toggle_run)
 
-    toggle_uptake = interface.Toggle(   pin=config.GPIO_TOGGLE_UPTAKE)
+    toggle_uptake = physical_control.Toggle(   pin=config.GPIO_TOGGLE_UPTAKE)
     cleaner.cleanup_list.append(toggle_uptake)
 
-    btn_power = interface.Button(   pin=config.GPIO_BTN_POWER,
+    btn_power = physical_control.Button(   pin=config.GPIO_BTN_POWER,
                                     short_hold=btn_power_short,
                                     short_args=[frankies_log, status],
                                     med_hold=btn_power_med,
@@ -152,8 +162,9 @@ def main():
                                     long_hold=btn_power_long,
                                     long_args=[frankies_log, status, cleaner])
     cleaner.cleanup_list.append(btn_power)
+    btn_power.start()
 
-    btn_calibrate = interface.Button(   pin=config.GPIO_BTN_CALIBRATE,
+    btn_calibrate = physical_control.Button(   pin=config.GPIO_BTN_CALIBRATE,
                                         short_hold=btn_calibrate_short,
                                         short_args=[frankies_log, status, camera],
                                         med_hold=btn_calibrate_med,
@@ -161,50 +172,62 @@ def main():
                                         long_hold=btn_power_long,
                                         long_args=[frankies_log, status])
     cleaner.cleanup_list.append(btn_calibrate)
+    btn_calibrate.start()
 
-    stepper_sprocket = physical_control.Stepper(    dir_pin=config.GPIO_STEPPER_0_DIR,
+    stepper_sprocket = physical_control.Stepper(    logger=frankies_log,
+                                                    knob=knob_spring,
+                                                    dir_pin=config.GPIO_STEPPER_0_DIR,
                                                     on_pin=config.GPIO_STEPPER_0_ON,
                                                     step_pin=config.GPIO_STEPPER_0_STEP,
                                                     mode0_pin=config.GPIO_STEPPER_0_MODE0,
                                                     mode1_pin=config.GPIO_STEPPER_0_MODE1,
                                                     mode2_pin=config.GPIO_STEPPER_0_MODE2 )
     cleaner.cleanup_list.append(stepper_sprocket)
+    stepper_sprocket.start()
 
     uptake_reel = physical_control.UptakeReel(  knob=toggle_run,
                                                 dir_pin=config.GPIO_STEPPER_1_DIR,
                                                 on_pin=config.GPIO_STEPPER_1_ON,
                                                 step_pin=config.GPIO_STEPPER_1_STEP,)
     cleaner.cleanup_list.append(uptake_reel)
+    uptake_reel.start()
 
 
+    shutdown = False
 
-
-
+    frankies_log.info("Starting Main Loop")
 
     #mainloop
     try:
         current_mode = knob_select.get_selection()
+        frankies_log.info("Current mode is %s" % str(current_mode))
+
         while not shutdown:
 
+            
             # Manual Adjustment Mode
             if knob_select.get_selection() == config.SELECT_MANUAL_ADJUST:
+
+                stepper_sprocket.mode = "motor"
 
                 if current_mode != knob_select.get_selection():
                     frankies_log.info("Changed to Manual Adjustment Mode")
                     status.snap()
                     status.nominal()
+                    current_mode = knob_select.get_selection()
 
                 speed = knob_spring.get_value()
 
                 stepper_sprocket.set_speed(speed)
 
-                if not speed and stepper_sprocket.energized:
+
+                if stepper_sprocket.stop and stepper_sprocket.energized:
 
                     status.nominal()
                     frankies_log.debug("Stepper Power Down")
                     stepper_sprocket.turn_off()
 
-                elif speed and not stepper_sprocket.energized:
+                elif not stepper_sprocket.stop and not stepper_sprocket.energized:
 
                     status.operating()
                     frankies_log.debug("Stepper Power Up")
@@ -214,10 +237,13 @@ def main():
             # Run Scan Mode
             if knob_select.get_selection() == config.SELECT_RUN:
 
+                stepper_sprocket.mode = "stepper"
+
                 if current_mode != knob_select.get_selection():
                     frankies_log.info("Changed to Run Mode")
                     status.snap()
                     status.nominal()
+                    current_mode = knob_select.get_selection()
 
 
                 if toggle_run.get_value():      
@@ -227,11 +253,17 @@ def main():
                     physical_control.capture_frame(frankies_log, status)
 
 
-            time.sleep(.01)
+            time.sleep(.05)
 
     except KeyboardInterrupt:
 
         frankies_log.info("Keyboard Interrupt, cleaning up threads and GPIO")
 
-        cleaner.cleanup()
+        cleaner.clean_all()
+
+    return
+
+if __name__ == "__main__":
+
+    main()
 
