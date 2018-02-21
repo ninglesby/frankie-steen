@@ -14,16 +14,24 @@ import Adafruit_ADS1x15
 import config
 
 
-def translate(value, leftMin, leftMax, rightMin, rightMax):
-    # Figure out how 'wide' each range is
-    leftSpan = leftMax - leftMin
-    rightSpan = rightMax - rightMin
+def translate(value, map_from_min, map_from_max, map_to_min, map_to_max, mode="LINEAR"):
+    
+    if mode == "LINEAR":
 
-    # Convert the left range into a 0-1 range (float)
-    valueScaled = float(value - leftMin) / float(leftSpan)
+        # Figure out how 'wide' each range is
+        from_span = map_from_max - map_from_min
+        to_span = map_to_min - map_from_min
 
-    # Convert the 0-1 range into a value in the right range.
-    return rightMin + (valueScaled * rightSpan)
+        # Convert the left range into a 0-1 range (float)
+        value_scaled = float(value - map_from_min) / float(from_span)
+
+        # Convert the 0-1 range into a value in the right range.
+        return map_to_min + (value_scaled * to_span)
+
+    elif mode == "LOG":
+
+        return "LOG mode is not ready yet"
+
 
 
 
@@ -71,7 +79,11 @@ class Stepper():
         if self.current_mode != "MOTOR":
 
             self.current_mode = "MOTOR"
-            self.logger.debug("Motor mode enabled")
+
+            if self.logger:
+                self.logger.debug("Motor mode enabled")
+            else:
+                print "Motor mode enabled"
 
         if not self.stop:
             self.turn_on()
@@ -97,7 +109,11 @@ class Stepper():
         if self.current_mode != "STEPPER":
 
             self.current_mode = "STEPPER"
-            self.logger.debug("Stepper mode enabled.")
+
+            if self.logger:
+                self.logger.debug("Stepper mode enabled.")
+            else:
+                print "Stepper mode enabled."
 
         if not self.stop and self.steps:
 
@@ -122,15 +138,26 @@ class Stepper():
     def turn_on(self):
 
         if not self.energized:
-            self.logger.debug("Stepper powered on")
+            
+            if self.logger:
+                self.logger.debug("Stepper powered on")
+            else:
+                print "Stepper powere on"
+
         pi.write(self.on_pin, 1)
         self.energized = 1
 
     def turn_off(self):
 
         if self.energized:
-            self.logger.debug("Stepper powered off")
+
+            if self.logger:
+                self.logger.debug("Stepper powered off")
+            else:
+                print "Stepper powered off"
+
         pi.write(self.on_pin, 0)
+
         self.energized = 0
 
     def set_speed(self, speed):
@@ -231,23 +258,25 @@ class Stepper():
     def cleanup(self):
 
 
-        pi.cleanup(self.dir_pin)
-        pi.cleanup(self.on_pin)
-        pi.cleanup(self.step_pin)
+        pi.write(self.dir_pin, 0)
+        pi.write(self.on_pin, 0)
+        pi.write(self.step_pin, 0)
         
         if self.mode0_pin:
-            pi.cleanup(self.mode0_pin)
+            pi.write(self.mode0_pin, 0)
 
         if self.mode1_pin:
-            pi.cleanup(self.mode1_pin)
+            pi.write(self.mode1_pin, 0)
 
         if self.mode2_pin:
-            pi.cleanup(self.mode2_pin)
+            pi.write(self.mode2_pin, 0)
 
     def generate_speeds(self, rows, columns):
 
-
-        self.logger.info("Generating Speeds")
+        if self.logger:
+            self.logger.info("Generating Speeds")
+        else:
+            print "Generating Speeds"
 
         values = {}
         indices = []
