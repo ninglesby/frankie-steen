@@ -147,6 +147,8 @@ def main():
     cleaner.cleanup_list.append(knob_select)
     knob_spring = physical_control.Knob(   pin=config.ADC_KNOB_1, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[-1,1] )
     cleaner.cleanup_list.append(knob_spring)
+    knob_uptake = physical_control.Knob( pin=config.ADC_KNOB_2, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[0,1])
+    cleaner.cleanup_list.append(knob_uptake)
 
     toggle_run = physical_control.Toggle(  pin=config.GPIO_TOGGLE_RUN)
     cleaner.cleanup_list.append(toggle_run)
@@ -183,19 +185,24 @@ def main():
                                                     mode1_pin=config.GPIO_STEPPER_0_MODE1,
                                                     mode2_pin=config.GPIO_STEPPER_0_MODE2 )
     cleaner.cleanup_list.append(stepper_sprocket)
-    stepper_sprocket.start()
 
-    uptake_reel = physical_control.UptakeReel(  knob=toggle_run,
+
+    uptake_reel = physical_control.Stepper(     logger=frankies_log,
+                                                knob=knob_uptake,
                                                 dir_pin=config.GPIO_STEPPER_1_DIR,
                                                 on_pin=config.GPIO_STEPPER_1_ON,
-                                                step_pin=config.GPIO_STEPPER_1_STEP,)
+                                                step_pin=config.GPIO_STEPPER_1_STEP,
+                                                mode="motor")
     cleaner.cleanup_list.append(uptake_reel)
-    uptake_reel.start()
+
 
 
     shutdown = False
 
     frankies_log.info("Starting Main Loop")
+
+    current_speed_sprocket = 0
+    current_knob_uptake = 0
 
     #mainloop
     try:
@@ -218,7 +225,17 @@ def main():
 
                 speed = knob_spring.get_value()
 
-                stepper_sprocket.set_speed(speed)
+                if not speed == current_speed_sprocket:
+
+                    current_speed_sprocket = speed
+
+                    stepper_sprocket.set_speed(speed)
+
+                    stepper_sprocket.motor()
+
+                else:
+
+                    time.sleep(.1)
 
 
                 if stepper_sprocket.stop and stepper_sprocket.energized:
@@ -232,6 +249,7 @@ def main():
                     status.operating()
                     frankies_log.debug("Stepper Power Up")
                     stepper_sprocket.turn_on()
+                    stepper_sprocket.stepper()
 
 
             # Run Scan Mode
@@ -250,12 +268,44 @@ def main():
 
                     status.operating()
 
-                    physical_control.capture_frame(frankies_log, status)
+                    stepper_sprocket.advance_frame()
+
+                    for step in stepper_sprocket.steps:
+                        
+                        if not current_knob_uptake == knob_uptake.get_value():
+                            speed = knob_uptake.get_value()
+                            uptake_reel.set_speed(speed)
+                            uptake_reel.motor()
+
+                        stepper_sprocket.stepper()
+
+                    stepper_sprocket.steps = 0
+
+                    camera.shutter_release()
 
 
-            time.sleep(.05)
+                    frame_count, lifetime = physical_control.increment_frame_count()
+
+                    frankies_log.info("Captured Frame: %s. Lifetime Capture: %s Frames" % (str(frame_count), lifetime_frame_count))
+
+                    status.snap()  
+
+                    #physical_control.capture_frame(frankies_log, status)
+
+
+            if not current_knob_uptake == knob_uptake.get_value():
+                speed = knob_uptake.get_value()
+                uptake_reel.set_speed(speed)
+                uptake_reel.motor()
+
+
+
+
+            time.sleep(.5)
 
     except KeyboardInterrupt:
+
+        shutdown = True
 
         frankies_log.info("Keyboard Interrupt, cleaning up threads and GPIO")
 

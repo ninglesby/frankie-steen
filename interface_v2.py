@@ -3,6 +3,8 @@ import threading
 import time
 
 import RPi.GPIO as GPIO
+import pigpio
+pi = pigpio.pi()
 
 import physical_control
 import config
@@ -55,7 +57,72 @@ class FrankiesLog:
 # a thread classns\n\
 
 # a thread class to allow asynchronous changes to the light
-class LightThread(threading.Thread):
+
+class Light():
+
+    def __init__(self, logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
+
+        self.light_pin = light_pin
+        self.mode = mode
+        self.brightness = brightness
+        self.blink_speed = blink_speed
+        self.frequency  = 200
+        self.logger = logger
+
+    def set_light(self, mode=None, brightness=None, blink_speed=None):
+
+        if mode:
+            self.mode = mode
+
+        if brightness:
+            self.brightness = brightness
+
+        if blink_speed:
+            self.blink_speed = blink_speed
+
+
+        if self.mode == "CONSTANT":
+
+            pi.write(self.light_pin, 1)
+            pi.set_PWM_frequency(self.light_pin, 200)
+            pi.set_PWM_dutycycle(self.light_pin, self.brightness)
+
+        elif self.mode == "BLINK":
+
+            pi.write(self.light_pin, 1)
+
+            self.set_speed(self.blink_speed)
+
+            pi.set_PWM_dutycycle(self.light_pin, 150)
+
+            return ""
+
+        else:
+
+            return "Invalid mode"
+
+    def set_speed(self, blink_speed=None):
+
+        speeds = [  10,
+                    20,
+                    40,
+                    50,
+                    80,
+                    100,
+                    160,
+                    200,
+                    250]
+
+        if blink_speed:
+            self.blink_speed = blink_speed
+
+        pi.set_PWM_frequency(self.light_pin, speeds[self.blink_speed])
+
+
+
+
+
+class notLightThread(threading.Thread):
     
     def __init__(self, name='LightThread', logger="", lite=False):
         """ constructor, setting initial variables """

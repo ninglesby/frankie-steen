@@ -21,13 +21,12 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
     # Convert the 0-1 range into a value in the right range.
     return rightMin + (valueScaled * rightSpan)
 
-class Stepper(threading.Thread):
+class Stepper():
     
     def __init__(   self, logger="", name="Stepper", dir_pin=0, on_pin=0,
                     step_pin=0, mode0_pin=0, mode1_pin=0, mode2_pin=0, knob="",
                     mode="stepper"):
 
-        self._stopevent = threading.Event( )
         GPIO.setup(dir_pin, GPIO.OUT)
         GPIO.setup(on_pin, GPIO.OUT)
         GPIO.setup(step_pin, GPIO.OUT)
@@ -56,42 +55,69 @@ class Stepper(threading.Thread):
         self.step_res_float = 1
         self.knob = knob
         self.mode = mode
-
-        threading.Thread.__init__(self, name=name)
-
-    def run(self):
-
+        self.pwm_running = False
         self.change_step_res(config.STEPPER_RES)
+        self.p = None
+        self.logger = logger
 
 
+    def motor(self):
 
-        while not self._stopevent.isSet():
+        if not self.pwm_running and not self.stop:
 
-            GPIO.output(self.dir_pin, self.dir)
+            self.p = GPIO.PWM(self.step_pin, int(self.speed*60))
 
-            if self.mode == "motor" and not self.stop:
+            self.p.start(50)
 
+            self.pwm_running = True
+
+            self.logger.debug("Started PWM for motor_mode at %s hz" % str(int(self.speed*60))) 
+
+        elif self.pwm_running and not self.stop:
+
+            self.p.ChangeFrequency(self.speed*60)
+
+            self.logger.debug("Changed PWM Frequency to %s hz"  % str(int(self.speed*60)))
+
+        elif self.pwm_running and self.stop:
+
+            self.pwm_running = False
+
+            self.p.stop()
+
+            self.logger.debug("Shutdown PWM for motor_mode")
+
+            
+
+    def stepper(self):
+
+
+        if self.mode == "stepper" and self.steps:
+
+            self.running_frame = True
+
+            for x in range(self.steps):
+
+                if self.emgerncy_stop:
+                    self.running_frame = False
+                    self.logger.warning("Emergency Stop")
+                    return 1
 
                 GPIO.output(self.step_pin, GPIO.HIGH)
-                GPIO.output(self.step_pin, GPIO.LOW)    
+                GPIO.output(self.step_pin, GPIO.LOW)
 
-                print self.speed
-                time.sleep(self.speed)
+                time.sleep(config.STEPPER_MAX)
 
-            elif self.mode == "stepper" and self.steps:
+            self.steps = 0
 
-                self.running_frame = True
+            self.running_frame = False
 
-                for x in range(self.steps):
+        else:
 
-                    GPIO.output(self.step_pin, GPIO.HIGH)
-                    GPIO.output(self.step_pin, GPIO.LOW)
+            self.logger.warning("No Steps")
 
-                self.steps = 0
+        return 0
 
-                self.running_frame = False
-            else:
-                time.sleep(.1)
 
     def turn_on(self):
 
@@ -206,14 +232,8 @@ class Stepper(threading.Thread):
                 GPIO.output(self.mode1_pin, 0)
                 GPIO.output(self.mode2_pin, 0)
 
-    def join(self, timeout=5.0):
-        """ Stop the thread and wait for it to end. """
-        self._stopevent.set( )
-        threading.Thread.join(self, timeout)
-
     def cleanup(self):
 
-        self._stopevent.set()
 
         GPIO.cleanup(self.dir_pin)
         GPIO.cleanup(self.on_pin)
@@ -228,7 +248,6 @@ class Stepper(threading.Thread):
         if self.mode2_pin:
             GPIO.cleanup(self.mode2_pin)
 
-        threading.Thread.join(self, 5.0 )
 
 
 class UptakeReel(threading.Thread):
@@ -242,7 +261,7 @@ class UptakeReel(threading.Thread):
         self.movement = Stepper( dir_pin=dir_pin, on_pin=on_pin, step_pin=step_pin)
         self.movement.start()
         
-        self.poll_time = .01
+        self.poll_time = .5
         threading.Thread.__init__(self, name=name)
 
     
@@ -255,7 +274,7 @@ class UptakeReel(threading.Thread):
             while GPIO.output(self.knob.pin):
 
                 speed = self.knob.get_value()
-                movement.speed = speed
+                movement.set_speed(speed)
 
                 time.sleep(self.poll_time)
 
@@ -499,7 +518,7 @@ def capture_frame(logger, status, stepper, camera):
 
     logger.info("Captured Frame: %s. Lifetime Capture: %s Frames" % (str(frame_count), lifetime_frame_count))
 
-    status.snap()
+    status.snap()   
 
 
 
