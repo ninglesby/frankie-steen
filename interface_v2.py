@@ -4,27 +4,12 @@ import time
 
 import RPi.GPIO as GPIO
 import pigpio
-pi = pigpio.pi()
 
-import physical_control
 import config
+import helpers
 
 
-
-def set_gpio_mode():
-    # set mode, I don't remember the other mode right now
-    if config.GPIO_MODE == "BCM":
-
-        GPIO.setmode(GPIO.BCM)
-
-        return False
-
-    else:
-
-        GPIO.setmode(GPIO.BCM)
-
-        return "Unknown GPIO mode, setting to BCM"
-
+#A logging class for better debugging over just printing to the console
 class FrankiesLog:
 
     def __init__(self):
@@ -53,14 +38,11 @@ class FrankiesLog:
         self.logger.addHandler(self.fh)
 
 
-
-# a thread classns\n\
-
-# a thread class to allow asynchronous changes to the light
+#A class for setting up an individual light
 
 class Light():
 
-    def __init__(self, logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
+    def __init__(self, pi, logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
 
         self.light_pin = light_pin
         self.mode = mode
@@ -121,157 +103,18 @@ class Light():
 
 
 
-
-class notLightThread(threading.Thread):
-    
-    def __init__(self, name='LightThread', logger="", lite=False):
-        """ constructor, setting initial variables """
-        #MODE 0: Off
-        #MODE 1: Cycle through all the hues at 100% brightness
-        #MODE 2: Constant Color
-        #MODE 3: Slow Blink
-        #MODE 4: Medium Blink
-        #MODE 5: Fast Blink
-        #MODE 6: Slow Pulse
-        #MODE 7: Medium Pulse
-        #MODE 8: Fast Pulse
-        self._stopevent = threading.Event( )
-        self._sleepperiod = 1.0
-        self.counter = 0
-        self.mode = 0
-        self.lite = lite
-        self.color = [0,0,0]
-        self.break_routine = False
-        self.current_mode = 0
-        self.logger = logger
-        threading.Thread.__init__(self, name=name)
-
-    def run(self):
-
-        on = True
-
-        while not self._stopevent.isSet():
-
-            self.current_mode = self.mode
-            
-            if not self.mode == 0:
-                on = True
-                
-                # cyle through all the hues
-                while self.mode == 1 and not self._stopevent.isSet(): 
-
-                    self.current_mode = self.mode
-
-                    for x in range(100):
-                        if self.mode != self.current_mode or self._stopevent.isSet:
-                            break
-                        self.lite.hsl(x, 100, 100)
-                        time.sleep(.01)
-                
-                # constant on
-                while self.mode == 2 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.lite.rgb(self.color[0], self.color[1], self.color[2])
-                    time.sleep(.1)
-                
-                ####BLINKS####  
-                while self.mode == 3 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=1)
-
-                while self.mode == 4 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5)
-
-                while self.mode == 5 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25)
-
-
-                ####PULSES####
-                while self.mode == 6 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=1, step_size=60)
-
-                while self.mode == 7 and not self._stopevent.isSet():
-                    self.current_mode= self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5, step_size=30)
-
-                while self.mode == 8 and not self._stopevent.isSet():
-                    self.current_mode= self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25, step_size=15)
-
-
-                    
-            elif on and self.mode == 0:
-                self.current_mode = self.mode
-                self.lite.hsl(0,0,0)
-                on = False
-            else:
-                time.sleep(.05)
-
-    def notify(self):
-
-
-        for x in range(5):
-
-            self.blink(r=self.color[0], g=self.color[1], b=self.color[2], speed=.25)
-
-    def blink(self, r=100, g=100, b=100, speed=.5):
-
-        r = r/100.0
-        g= g/100.0
-        b= b/100.0
-
-        self.lite.rgb(r, g, b)
-        time.sleep(speed)
-        self.lite.rgb(0, 0, 0)
-        time.sleep(speed)
-
-    def pulse(self, r=100.0, g=100.0, b=100.0, speed=.5, step_size=50):
-
-        r = r/100.0
-        g= g/100.0
-        b= b/100.0
-
-        for x in range(step_size):
-            if  self.mode != self.current_mode or self._stopevent.isSet:
-                return
-            else:
-
-                print math.sin((x*(math.pi/step_size)))*100
-                self.lite.rgb()
-            time.sleep(speed*2/step_size)
-
-    def join(self, timeout=None):
-        # Stop the thread and wait for it to end.
-        self._stopevent.set( )
-        threading.Thread.join(self, timeout)
-        
-    def rgbSet(self, led_r, led_g, led_b, r, g, b):
-        led_r.ChangeDutyCycle(r)
-        led_g.ChangeDutyCycle(g)
-        led_b.ChangeDutyCycle(b)
-
-
 # Controls for RGB light on a raspberry pi
 class RGBLightController():
     
-    def __init__(self, logger="", red=27, green=17, blue=26, freq=50):
+    def __init__(self, pi, logger="", red=27, green=17, blue=26, freq=50):
 
-        GPIO.setup(red, GPIO.OUT)
-        GPIO.setup(green, GPIO.OUT)
-        GPIO.setup(blue, GPIO.OUT)
+        pi.set_mode(red, pigpio.OUTPUT)
+        pi.set_mode(green, pigpio.OUTPUT)
+        pi.set_mode(blue, pigpio.OUTPUT)
         self.red = red
         self.green = green
         self.blue = blue
-        self.pwm_r = GPIO.PWM(red, freq)
-        self.pwm_g = GPIO.PWM(green, freq)
-        self.pwm_b = GPIO.PWM(blue, freq)
-        
-        self.pwm_r.start(0)
-        self.pwm_g.start(0)
-        self.pwm_b.start(0)
+
         
         self.logger = logger
 
@@ -292,15 +135,16 @@ class RGBLightController():
             elif rgb[c] < 0.0:
                 rgb[c] = 0.0
         
-        self.pwm_r.ChangeDutyCycle(rgb["r"])
-        self.pwm_g.ChangeDutyCycle(rgb["g"])
-        self.pwm_b.ChangeDutyCycle(rgb["b"])
+        self.pi.set_PWM_dutycycle(self.red, rgb["r"])
+        self.pi.set_PWM_dutycycle(self.green, rgb["g"])
+        self.pi.set_PWM_dutycycle(self.blue, rgb["b"])
 
     def rgb(self, r, g, b):
 
-        self.pwm_r.ChangeDutyCycle(r)
-        self.pwm_g.ChangeDutyCycle(g)
-        self.pwm_b.ChangeDutyCycle(b)
+        self.pi.set_PWM_dutycycle(self.red, rgb["r"])
+        self.pi.set_PWM_dutycycle(self.green, rgb["g"])
+        self.pi.set_PWM_dutycycle(self.blue, rgb["b"])
+
         
     def hueCycle(self, percent):
 
@@ -324,9 +168,9 @@ class RGBLightController():
 
     def cleanup(self):
 
-        GPIO.cleanup(self.red)
-        GPIO.cleanup(self.green)
-        GPIO.cleanup(self.blue)
+        self.pi.write(self.red,0)
+        self.pi.write(self.green,0)
+        self.pi.write(self.blue,0)
 
 # class to handle status operations
 class Status():
@@ -404,4 +248,160 @@ class Status():
     def cleanup(self):
         #self.lightthread.join()
         self.lite.cleanup()
+
+
+
+class Knob():
+
+    def __init__(   self, 
+                    pin=0,
+                    adc="",
+                    mode=config.ADC_KNOB_SWEEP,
+                    selections=0,
+                    sweep_range=[0,1],
+                    threshold=config.ADC_KNOB_THRESHOLD,
+                    knob_hi=config.ADC_KNOB_HI,
+                    knob_lo=config.ADC_KNOB_LO):
+        
+        self.pin = pin
+        self.adc = adc
+        self.mode = mode
+        self.selections = selections
+        self.sweep_range = sweep_range
+        self.threshold = threshold
+        self.knob_hi = knob_hi
+        self.knob_lo = knob_lo
+        self.gain = config.ADC_GAIN
+
+        self.rising_time = 0
+        self.falling_time = 0
+
+    def get_selection(self):
+        
+        value = self.adc.read_adc(self.pin, gain=self.gain)
+
+        selection = int(round(helpers.translate(value, self.knob_hi, self.knob_lo, 1, self.selections)))
+
+        return selection
+
+
+    def get_value(self):
+
+        value = self.adc.read_adc(self.pin, gain=self.gain)
+
+        mapped_value = helpers.translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1])
+
+        return mapped_value
+
+    def cleanup(self):
+
+        return True
+
+
+
+
+class Switch():
+
+    def __init__(   self,
+                    pi,
+                    switch_pin=0,
+                    callbacks={},
+                    mode="BUTTON",
+                    glitch=100):
+    
+    self.pi = pi
+    self.switch_pin = button_pin
+    self.callbacks = callbacks
+    self.button_engaged = False
+    pi.set_mode(switch_pin, pigpio.INPUT)
+    pi.set_glitch_filter(switch_pin, glitch)
+
+    self._start()
+
+
+    def _start(self):
+
+        if mode == "BUTTON":
+            cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.button_callback)
+
+        elif mode == "TOGGLE":
+            cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.toggle_callback)
+
+    def button_callback(self, GPIO, level, tick):
+
+
+        if level == 1:
+
+            self.rising_time = tick
+            self.button_engaged = True
+
+        elif level == 0:
+
+            self.button_engaged = False
+            self.falling_time = tick
+
+            press_time = self.rising_time = self.falling_time
+
+            current_high = 0
+            chosen_key = ""
+
+            for func in self.callbacks:
+
+                if self.callbacks[func]["time"] <= press_time and self.callbacks[func["time"]] > current_high:
+
+                    current_high = self.callbacks[func]["time"]
+                    chosen_key = func
+
+            callback_function = self.callbacks[chosen_key]["function"]
+
+            try:
+
+                args = self.callbacks[chose_key]["args"]
+
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+    def toggle(self, GPIO, level, tick):
+
+        if self.pi.read(self.switch_pin):
+
+            callback_function = self.callbacks[1]["function"]
+
+            try:
+                
+                args = self.callback_function[1]["args"]
+            
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+        else:
+
+            callback_function = self.callbacks[0]["function"]
+
+            try:
+
+                args = self.callbacks[0]["args"]
+
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+    def cleanup(self):
+
+        cb1.cancel()
+
+
+
+
+
+
+
 

@@ -7,44 +7,12 @@ from collections import OrderedDict
 
 #import RPi.GPIO as GPIO
 import pigpio
-pi = pigpio.pi()
 
 import Adafruit_ADS1x15
 
 import config
+import helpers
 
-
-def translate(value, map_from_min, map_from_max, map_to_min, map_to_max, mode="LINEAR"):
-    
-
-    # Figure out how 'wide' each range is
-    from_span = map_from_max - map_from_min
-    to_span = map_to_max - map_to_min
-
-    # Convert the left range into a 0-1 range (float)
-    value_scaled = float(value - map_from_min) / float(from_span)
-    
-
-    if mode == "LINEAR":
-
-        # Convert the 0-1 range into a value in the right range.
-        return map_to_min + (value_scaled * to_span)
-
-    elif mode == "LOG":
-
-        if value_scaled < .01:
-            
-            return 0
-
-        log = ((math.log(value_scaled, 10))+2)/2
-
-        return map_to_min + (log * to_span)
-
-    elif mode == "EXP":
-
-        exp = math.pow(value_scaled, 2)
-
-        return map_to_min + (exp * to_span)
 
 
 
@@ -71,6 +39,20 @@ class Stepper():
         self.mode0_pin = mode0_pin
         self.mode1_pin = mode1_pin
         self.mode2_pin = mode2_pin
+
+        pi.set_mode(self.dir_pin, pigpio.OUTPUT)
+        pi.set_mode(self.on_pin, pigpio.OUTPUT)
+        pi.set_mode(self.step_pin, pigpio.OUTPUT)
+
+        if self.mode0_pin:
+            pi.set_mode(self.mode0, pigpio.OUTPUT)
+
+        if self.mode1_pin:
+            pi.set_mode(self.mode1, pigpio.OUTPUT)
+
+        if self.mode2_pin:
+            pi.set_mode(self.mode2, pigpio.OUTPUT)
+
         self.speed = 0
         self.dir = 1
         self.energized = 1
@@ -194,7 +176,7 @@ class Stepper():
             self.stop = True
             self.turn_off()
 
-        speed_index = int(round(translate(speed, 0.0, 1.0, 0, len(self.speeds)-1)))
+        speed_index = int(round(helpers.translate(speed, 0.0, 1.0, 0, len(self.speeds)-1)))
 
         frequency = self.speed_params[self.speeds[speed_index]][0]
 
@@ -324,82 +306,16 @@ class Stepper():
 
 
 
-class Knob():
+class PhotoGate():
 
-    def __init__(   self, pin=0,
-                    adc="",
-                    mode=config.ADC_KNOB_SWEEP,
-                    selections=0,
-                    sweep_range=[0,1],
-                    threshold=config.ADC_KNOB_THRESHOLD,
-                    knob_hi=config.ADC_KNOB_HI,
-                    knob_lo=config.ADC_KNOB_LO):
-        
-        self.pin = pin
-        self.adc = adc
-        self.mode = mode
-        self.selections = selections
-        self.sweep_range = sweep_range
-        self.threshold = threshold
-        self.knob_hi = knob_hi
-        self.knob_lo = knob_lo
-        self.gain = config.ADC_GAIN
+    def __init__():
 
-    def get_selection(self):
-        
-        value = self.adc.read_adc(self.pin, gain=self.gain)
+        #things
 
-        selection = int(round(translate(value, self.knob_hi, self.knob_lo, 1, self.selections)))
+    def function(self):
 
-        return selection
-
-
-    def get_value(self):
-
-        value = self.adc.read_adc(self.pin, gain=self.gain)
-
-        mapped_value = translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1])
-
-        return mapped_value
-
-    def cleanup(self):
-
-        return True
+        #other things
 
 
 
 
-def increment_frame_count(reset=False):
-
-    odometer = os.path.join(os.path.dirname(config.LOG_LOCATION), "odometer")
-
-    if reset:
-        config.FRAME_COUNT = 0
-    else:
-        config.FRAME_COUNT += 1
-
-    if not os.path.exists(odometer):
-
-        with open(odometer, "wb") as f:
-
-            f.write(str(0))
-
-            
-    with open(odometer, "r+") as f:
-        
-        lifetime_frame_count = f.read().replace(" ", "")
-
-        string_length = len(lifetime_frame_count)
-
-        if reset:
-
-            lifetime_frame_count = str(0) + " " * string_length
-
-        else:
-
-            lifetime_frame_count = str(int(lifetime_frame_count)+1)
-
-        f.seek(0)
-        f.write(lifetime_frame_count)
-
-    return config.FRAME_COUNT, lifetime_frame_count
