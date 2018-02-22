@@ -7,6 +7,7 @@ import pigpio
 
 import config
 import helpers
+import interface_v2 as interface
 
 
 #A logging class for better debugging over just printing to the console
@@ -42,7 +43,7 @@ class FrankiesLog:
 
 class Light():
 
-    def __init__(self, pi, logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
+    def __init__(self, pi="", logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
 
         self.light_pin = light_pin
         self.mode = mode
@@ -50,6 +51,7 @@ class Light():
         self.blink_speed = blink_speed
         self.frequency  = 200
         self.logger = logger
+        self.pi = pi
 
     def set_light(self, mode=None, brightness=None, blink_speed=None):
 
@@ -65,17 +67,17 @@ class Light():
 
         if self.mode == "CONSTANT":
 
-            pi.write(self.light_pin, 1)
-            pi.set_PWM_frequency(self.light_pin, 200)
-            pi.set_PWM_dutycycle(self.light_pin, self.brightness)
+            self.pi.write(self.light_pin, 1)
+            self.pi.set_PWM_frequency(self.light_pin, 200)
+            self.pi.set_PWM_dutycycle(self.light_pin, self.brightness)
 
         elif self.mode == "BLINK":
 
-            pi.write(self.light_pin, 1)
+            self.pi.write(self.light_pin, 1)
 
             self.set_speed(self.blink_speed)
 
-            pi.set_PWM_dutycycle(self.light_pin, 150)
+            self.pi.set_PWM_dutycycle(self.light_pin, 150)
 
             return ""
 
@@ -98,7 +100,7 @@ class Light():
         if blink_speed:
             self.blink_speed = blink_speed
 
-        pi.set_PWM_frequency(self.light_pin, speeds[self.blink_speed])
+        self.pi.set_PWM_frequency(self.light_pin, speeds[self.blink_speed])
 
 
 
@@ -106,7 +108,7 @@ class Light():
 # Controls for RGB light on a raspberry pi
 class RGBLightController():
     
-    def __init__(self, pi, logger="", red=27, green=17, blue=26, freq=50):
+    def __init__(self, pi="", logger="", red=27, green=17, blue=26, freq=50):
 
         pi.set_mode(red, pigpio.OUTPUT)
         pi.set_mode(green, pigpio.OUTPUT)
@@ -232,6 +234,7 @@ class Status():
             self.current_status = "success"
             self.logger.info("Status changed to success")
 
+
     def snap(self):
 
         self.lightthread.notify()
@@ -261,7 +264,8 @@ class Knob():
                     sweep_range=[0,1],
                     threshold=config.ADC_KNOB_THRESHOLD,
                     knob_hi=config.ADC_KNOB_HI,
-                    knob_lo=config.ADC_KNOB_LO):
+                    knob_lo=config.ADC_KNOB_LO,
+                    translate_mode="LINEAR"):
         
         self.pin = pin
         self.adc = adc
@@ -272,6 +276,7 @@ class Knob():
         self.knob_hi = knob_hi
         self.knob_lo = knob_lo
         self.gain = config.ADC_GAIN
+        self.translate_mode = translate_mode
 
         self.rising_time = 0
         self.falling_time = 0
@@ -289,7 +294,7 @@ class Knob():
 
         value = self.adc.read_adc(self.pin, gain=self.gain)
 
-        mapped_value = helpers.translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1])
+        mapped_value = helpers.translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1], self.translate_mode)
 
         return mapped_value
 
@@ -303,35 +308,36 @@ class Knob():
 class Switch():
 
     def __init__(   self,
-                    pi,
+                    pi="",
                     switch_pin=0,
-                    callbacks={},
+                    callbacks=[],
                     mode="BUTTON",
                     glitch=100):
     
-    self.pi = pi
-    self.switch_pin = button_pin
-    self.callbacks = callbacks
-    self.button_engaged = False
-    pi.set_mode(switch_pin, pigpio.INPUT)
-    pi.set_glitch_filter(switch_pin, glitch)
+        self.pi = pi
+        self.switch_pin = switch_pin
+        self.callbacks = callbacks
+        self.button_engaged = False
+        self.mode = mode
+        pi.set_mode(switch_pin, pigpio.INPUT)
+        pi.set_glitch_filter(switch_pin, glitch)
 
-    self._start()
+        self._start()
 
 
     def _start(self):
 
-        if mode == "BUTTON":
+        if self.mode == "BUTTON":
             cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.button_callback)
 
-        elif mode == "TOGGLE":
+        elif self.mode == "TOGGLE":
             cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.toggle_callback)
 
     def button_callback(self, GPIO, level, tick):
 
+        index = 1
 
         if level == 1:
-
             self.rising_time = tick
             self.button_engaged = True
 
@@ -340,23 +346,27 @@ class Switch():
             self.button_engaged = False
             self.falling_time = tick
 
-            press_time = self.rising_time = self.falling_time
+            press_time = self.falling_time - self.rising_time
+            press_time = float(press_time/1000000.0)
 
-            current_high = 0
-            chosen_key = ""
+            print press_time
+
+            current_high = -1.0
+            chosen_dict = {}
 
             for func in self.callbacks:
 
-                if self.callbacks[func]["time"] <= press_time and self.callbacks[func["time"]] > current_high:
 
-                    current_high = self.callbacks[func]["time"]
-                    chosen_key = func
+                if func["time"] <= press_time and func["time"] > current_high:
 
-            callback_function = self.callbacks[chosen_key]["function"]
+                    current_high = func["time"]
+                    chosen_dict = func
+
+            callback_function = chosen_dict["function"]
 
             try:
 
-                args = self.callbacks[chose_key]["args"]
+                args = chosen_dict["args"]
 
             except KeyError:
 

@@ -20,6 +20,7 @@ import helpers
 class Stepper():
     
     def __init__(   self, logger="",
+                    pi="",
                     dir_pin=1,
                     on_pin=0,
                     step_pin=0,
@@ -29,9 +30,10 @@ class Stepper():
                     mode="stepper",
                     default_dir=1,
                     frequencies=config.GPIO_FREQUENCIES,
-                    floats=config.STEPPER_FLOATS):
+                    floats=config.STEPPER_FLOATS,
+                    translate_mode="LOG"):
 
-
+        self.pi = pi
         self.dir_pin = dir_pin
         self.default_dir = default_dir
         self.on_pin = on_pin
@@ -45,13 +47,13 @@ class Stepper():
         pi.set_mode(self.step_pin, pigpio.OUTPUT)
 
         if self.mode0_pin:
-            pi.set_mode(self.mode0, pigpio.OUTPUT)
+            pi.set_mode(self.mode0_pin, pigpio.OUTPUT)
 
         if self.mode1_pin:
-            pi.set_mode(self.mode1, pigpio.OUTPUT)
+            pi.set_mode(self.mode1_pin, pigpio.OUTPUT)
 
         if self.mode2_pin:
-            pi.set_mode(self.mode2, pigpio.OUTPUT)
+            pi.set_mode(self.mode2_pin, pigpio.OUTPUT)
 
         self.speed = 0
         self.dir = 1
@@ -67,6 +69,8 @@ class Stepper():
         self.speeds, self.speed_params = self.generate_speeds(frequencies, floats)
         self.threshold = config.ADC_KNOB_THRESHOLD
         self.current_mode = ""
+        self.frequency = 800
+        self.translate_mode = translate_mode
         
 
 
@@ -83,21 +87,21 @@ class Stepper():
 
         if not self.stop:
             self.turn_on()
-            pi.set_PWM_dutycycle(self.step_pin, 150)
+            self.pi.hardware_PWM(self.step_pin, self.frequency, 250000)
 
         else:
             self.turn_off()
-            pi.set_PWM_dutycycle(self.step_pin, 0)
+            self.pi.hardware_PWM(self.step_pin, self.frequency, 250000)
 
     def one_step(self):
 
-        starting = pi.read(self.step_pin)
+        starting = self.pi.read(self.step_pin)
 
-        pi.write(self.step_pin, not starting)
+        self.pi.write(self.step_pin, not starting)
 
         time.sleep(self.max_speed)
 
-        pi.write(self.step_pin, starting)
+        self.pi.write(self.step_pin, starting)
             
 
     def stepper(self):
@@ -117,11 +121,11 @@ class Stepper():
             
             if self.rewind:
 
-                pi.write(self.dir_pin, not self.default_dir)
+                self.pi.write(self.dir_pin, not self.default_dir)
 
             else:
 
-                pi.write(self.dir_pin, self.default_dir)
+                self.pi.write(self.dir_pin, self.default_dir)
 
 
             for step in range(self.steps):
@@ -140,7 +144,7 @@ class Stepper():
             else:
                 print "Stepper powere on"
 
-        pi.write(self.on_pin, 1)
+        self.pi.write(self.on_pin, 1)
         self.energized = 1
 
     def turn_off(self):
@@ -152,7 +156,7 @@ class Stepper():
             else:
                 print "Stepper powered off"
 
-        pi.write(self.on_pin, 0)
+        self.pi.write(self.on_pin, 0)
 
         self.energized = 0
 
@@ -162,13 +166,13 @@ class Stepper():
             
             self.turn_on()
             self.stop = False
-            pi.write(self.dir_pin, 1)
+            self.pi.write(self.dir_pin, 1)
 
         elif speed < 0 - self.threshold:
 
             self.turn_on()
             self.stop = False
-            pi.write(self.dir_pin, 0) 
+            self.pi.write(self.dir_pin, 0) 
             speed = -1.0 * speed
 
         else:
@@ -176,7 +180,7 @@ class Stepper():
             self.stop = True
             self.turn_off()
 
-        speed_index = int(round(helpers.translate(speed, 0.0, 1.0, 0, len(self.speeds)-1)))
+        speed_index = int( round( helpers.translate( speed, 0.0, 1.0, 0, len(self.speeds)-1, self.translate_mode ) ) )
 
         frequency = self.speed_params[self.speeds[speed_index]][0]
 
@@ -185,7 +189,8 @@ class Stepper():
 
 
 
-        pi.set_PWM_frequency(self.step_pin, frequency)
+        self.frequency = frequency
+        self.pi.set_PWM_frequency(self.step_pin, frequency)
 
         self.change_step_res(step_res)
 
@@ -199,9 +204,6 @@ class Stepper():
 
         self.steps = int(config.STEPPER_FRAME_DEGREE * steps_per_degree)
 
-
-
-
         
 
     def change_step_res(self, step_res):
@@ -212,60 +214,60 @@ class Stepper():
         if step_res == "1" or step_res == 1.0:
 
             self.step_res_float = 1.0
-            pi.write(self.mode0_pin, 0)
-            pi.write(self.mode1_pin, 0)
-            pi.write(self.mode2_pin, 0)
+            self.pi.write(self.mode0_pin, 0)
+            self.pi.write(self.mode1_pin, 0)
+            self.pi.write(self.mode2_pin, 0)
 
         elif step_res == "1/2" or step_res == .5:
 
             self.step_res_float = 0.5
-            pi.write(self.mode0_pin, 1)
-            pi.write(self.mode1_pin, 0)
-            pi.write(self.mode2_pin, 0)
+            self.pi.write(self.mode0_pin, 1)
+            self.pi.write(self.mode1_pin, 0)
+            self.pi.write(self.mode2_pin, 0)
 
         elif step_res == "1/4" or step_res == .25:
 
             self.step_res_float = 0.25
-            pi.write(self.mode0_pin, 0)
-            pi.write(self.mode1_pin, 1)
-            pi.write(self.mode2_pin, 0)
+            self.pi.write(self.mode0_pin, 0)
+            self.pi.write(self.mode1_pin, 1)
+            self.pi.write(self.mode2_pin, 0)
 
         elif step_res == "1/8" or step_res == .125:
 
             self.step_res_float = 0.125
-            pi.write(self.mode0_pin, 1)
-            pi.write(self.mode1_pin, 1)
-            pi.write(self.mode2_pin, 0)
+            self.pi.write(self.mode0_pin, 1)
+            self.pi.write(self.mode1_pin, 1)
+            self.pi.write(self.mode2_pin, 0)
 
         elif step_res == "1/16" or step_res == .0625:
 
             self.step_res_float = 0.0625
-            pi.write(self.mode0_pin, 0)
-            pi.write(self.mode1_pin, 0)
-            pi.write(self.mode2_pin, 1)
+            self.pi.write(self.mode0_pin, 0)
+            self.pi.write(self.mode1_pin, 0)
+            self.pi.write(self.mode2_pin, 1)
 
         elif step_res == "1/32" or step_res == .03125:
 
             self.step_res_float = 0.03125
-            pi.write(self.mode0_pin, 1)
-            pi.write(self.mode1_pin, 0)
-            pi.write(self.mode2_pin, 1)
+            self.pi.write(self.mode0_pin, 1)
+            self.pi.write(self.mode1_pin, 0)
+            self.pi.write(self.mode2_pin, 1)
 
     def cleanup(self):
 
 
-        pi.write(self.dir_pin, 0)
-        pi.write(self.on_pin, 0)
-        pi.write(self.step_pin, 0)
+        self.pi.write(self.dir_pin, 0)
+        self.pi.write(self.on_pin, 0)
+        self.pi.write(self.step_pin, 0)
         
         if self.mode0_pin:
-            pi.write(self.mode0_pin, 0)
+            self.pi.write(self.mode0_pin, 0)
 
         if self.mode1_pin:
-            pi.write(self.mode1_pin, 0)
+            self.pi.write(self.mode1_pin, 0)
 
         if self.mode2_pin:
-            pi.write(self.mode2_pin, 0)
+            self.pi.write(self.mode2_pin, 0)
 
     def generate_speeds(self, rows, columns):
 
@@ -302,6 +304,8 @@ class Stepper():
 
         return indices, values
 
+    
+
 
 
 
@@ -310,11 +314,10 @@ class PhotoGate():
 
     def __init__():
 
-        #things
-
+        return
     def function(self):
 
-        #other things
+        return
 
 
 

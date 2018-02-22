@@ -12,7 +12,18 @@ import interface_v2 as interface
 import helpers
 
 
+def btn_calibrate_cb0(pi):
 
+    current_state = pi.read(config.GPIO_STATUS_BLUE)
+
+    pi.write(config.GPIO_STATUS_BLUE, not current_state)
+    
+    print "Callback 0"
+
+
+def btn_calibrate_cb1():
+    
+    print "Callback 1"
 
 
 
@@ -52,26 +63,55 @@ def main():
                                     light_pin=config.GPIO_STATUS_BLUE,
                                     )
 
+    btn_calibrate_cbs = [   
+                            {   "function":btn_calibrate_cb0,
+                                "time":0.0,
+                                "args":[pi]},
+                            
+                            {   "function":btn_calibrate_cb1,
+                                "time":2.0,
+                                "args":[]}
+                        ]
+
+    btn_calibrate = interface.Switch(   pi=pi,
+                                        switch_pin=config.GPIO_BTN_CALIBRATE,
+                                        callbacks=btn_calibrate_cbs,
+                                        mode="BUTTON")
+
     last_warning = ""
     try:
 
         while True:
 
             if stepper_sprocket.energized:
-                blue_light.set_light(mode="BLINK", blink_speed=0)
+                #blue_light.set_light(mode="CONSTANT")
+                pass
 
             else:
 
-                blue_light.set_light(mode="CONSTANT")
+                #blue_light.set_light(mode="CONSTANT")
+                pass
 
             if knob_select.get_selection() == 1:
+
+
+                step_index = int( helpers.translate(    knob_spring.get_value(),
+                                                        knob_spring.sweep_range[0],
+                                                        knob_spring.sweep_range[1],
+                                                        0,
+                                                        len(config.STEPPER_FLOATS),
+                                                        "LINEAR" )
+                                                    )
+
+                print step_index
+
                 
-                stepper_sprocket.change_step_res("1/8")
+                stepper_sprocket.change_step_res(config.STEPPER_FLOATS[step_index])
                 stepper_sprocket.advance_frame()
                 stepper_sprocket.stepper()
 
 
-                frame_count, lifetime_frame_count = physical_control.increment_frame_count()
+                frame_count, lifetime_frame_count = helpers.increment_frame_count()
 
                 frankies_log.info("Captured Frame: %s. Lifetime Capture: %s Frames" % (str(frame_count), lifetime_frame_count))
 
