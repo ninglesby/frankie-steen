@@ -62,8 +62,9 @@ class Stepper():
         self.steps = 0
         self.step_res_float = 1.0
         self.mode = mode
-        self.change_step_res(config.STEPPER_RES)
         self.logger = logger
+        self. current_step_res = None
+        self.change_step_res(config.STEPPER_RES)
         self.rewind = False
         self.max_speed = config.STEPPER_MAX
         self.speeds, self.speed_params = self.generate_speeds(frequencies, floats)
@@ -108,6 +109,8 @@ class Stepper():
 
         if self.current_mode != "STEPPER":
 
+            self.stop = False
+
             self.current_mode = "STEPPER"
 
             if self.logger:
@@ -142,7 +145,7 @@ class Stepper():
             if self.logger:
                 self.logger.debug("Stepper powered on")
             else:
-                print "Stepper powere on"
+                print "Stepper power on"
 
         self.pi.write(self.on_pin, 1)
         self.energized = 1
@@ -187,10 +190,12 @@ class Stepper():
         step_res = self.speed_params[self.speeds[speed_index]][1]
 
 
+        if not frequency == self.frequency:
 
+            self.logger.debug("Frequency changed to %s" % str(frequency))
 
-        self.frequency = frequency
-        self.pi.set_PWM_frequency(self.step_pin, frequency)
+            self.frequency = frequency
+            self.pi.set_PWM_frequency(self.step_pin, frequency)
 
         self.change_step_res(step_res)
 
@@ -209,49 +214,69 @@ class Stepper():
     def change_step_res(self, step_res):
 
 
-        config.STEPPER_RES = step_res
+        if step_res == config.STEPPER_RES:
 
-        if step_res == "1" or step_res == 1.0:
+            pass
 
-            self.step_res_float = 1.0
-            self.pi.write(self.mode0_pin, 0)
-            self.pi.write(self.mode1_pin, 0)
-            self.pi.write(self.mode2_pin, 0)
+        else:
 
-        elif step_res == "1/2" or step_res == .5:
+            config.STEPPER_RES = step_res
 
-            self.step_res_float = 0.5
-            self.pi.write(self.mode0_pin, 1)
-            self.pi.write(self.mode1_pin, 0)
-            self.pi.write(self.mode2_pin, 0)
 
-        elif step_res == "1/4" or step_res == .25:
 
-            self.step_res_float = 0.25
-            self.pi.write(self.mode0_pin, 0)
-            self.pi.write(self.mode1_pin, 1)
-            self.pi.write(self.mode2_pin, 0)
+            if step_res == "1" or step_res == 1.0: 
 
-        elif step_res == "1/8" or step_res == .125:
+                self.logger.debug("Changed Step Res to 1. 0 - 0 - 0")
 
-            self.step_res_float = 0.125
-            self.pi.write(self.mode0_pin, 1)
-            self.pi.write(self.mode1_pin, 1)
-            self.pi.write(self.mode2_pin, 0)
+                self.step_res_float = 1.0
+                self.pi.write(self.mode0_pin, 0)
+                self.pi.write(self.mode1_pin, 0)
+                self.pi.write(self.mode2_pin, 0)
 
-        elif step_res == "1/16" or step_res == .0625:
+            elif step_res == "1/2" or step_res == .5:
 
-            self.step_res_float = 0.0625
-            self.pi.write(self.mode0_pin, 0)
-            self.pi.write(self.mode1_pin, 0)
-            self.pi.write(self.mode2_pin, 1)
+                self.logger.debug("Changed Step Res to 1/2. 1 - 0 - 0")
 
-        elif step_res == "1/32" or step_res == .03125:
+                self.step_res_float = 0.5
+                self.pi.write(self.mode0_pin, 1)
+                self.pi.write(self.mode1_pin, 0)
+                self.pi.write(self.mode2_pin, 0)
 
-            self.step_res_float = 0.03125
-            self.pi.write(self.mode0_pin, 1)
-            self.pi.write(self.mode1_pin, 0)
-            self.pi.write(self.mode2_pin, 1)
+            elif step_res == "1/4" or step_res == .25:
+
+                self.logger.debug("Changed Step Res to 1/4. 0 - 1 - 0")
+
+                self.step_res_float = 0.25
+                self.pi.write(self.mode0_pin, 0)
+                self.pi.write(self.mode1_pin, 1)
+                self.pi.write(self.mode2_pin, 0)
+
+            elif step_res == "1/8" or step_res == .125:
+
+                self.logger.debug("Changed Step Res to 1/8. 1 - 1 - 0")
+
+                self.step_res_float = 0.125
+                self.pi.write(self.mode0_pin, 1)
+                self.pi.write(self.mode1_pin, 1)
+                self.pi.write(self.mode2_pin, 0)
+
+            elif step_res == "1/16" or step_res == .0625:
+
+                self.logger.debug("Changed Step Res to 1/16. 0 - 0 - 1")
+
+                self.step_res_float = 0.0625
+                self.pi.write(self.mode0_pin, 0)
+                self.pi.write(self.mode1_pin, 0)
+                self.pi.write(self.mode2_pin, 1)
+
+            elif step_res == "1/32" or step_res == .03125:
+
+                self.logger.debug("Changed Step Res to 1/32. 1 - 0 - 1")
+
+                self.step_res_float = 0.03125
+                self.pi.write(self.mode0_pin, 1)
+                self.pi.write(self.mode1_pin, 0)
+                self.pi.write(self.mode2_pin, 1)
 
     def cleanup(self):
 

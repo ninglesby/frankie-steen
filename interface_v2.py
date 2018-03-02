@@ -1,16 +1,207 @@
 import logging
 import threading
 import time
+import subprocess
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageFont
 
 import RPi.GPIO as GPIO
 import pigpio
+import Adafruit_GPIO.SPI as SPI
+import Adafruit_SSD1306
 
 import config
 import helpers
 import interface_v2 as interface
 
 
+class Display():
+    def __init__(self):
+        """ constructor, setting initial variables """
+        self._sleepperiod = 1.0
+        self.counter = 0
+        self.mode = 0
+        self.text = []
+        self.title = ""
+        self.endloop = False
+        # Raspberry Pi pin configuration:
+        RST = None     # on the PiOLED this pin isnt used
+        # Note the following are only used with SPI:
+        DC = 23
+        SPI_PORT = 0
+        SPI_DEVICE = 0
+
+        # Beaglebone Black pin configuration:
+        # RST = 'P9_12'
+        # Note the following are only used with SPI:
+        # DC = 'P9_15'
+        # SPI_PORT = 1
+        # SPI_DEVICE = 0
+
+        # 128x32 display with hardware I2C:
+        self.disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
+
+        # 128x64 display with hardware I2C:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
+
+        # Note you can change the I2C address by passing an i2c_address parameter like:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, i2c_address=0x3C)
+
+        # Alternatively you can specify an explicit I2C bus number, for example
+        # with the 128x32 display you would use:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, i2c_bus=2)
+
+        # 128x32 display with hardware SPI:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE, max_speed_hz=8000000))
+
+        # 128x64 display with hardware SPI:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE, max_speed_hz=8000000))
+
+        # Alternatively you can specify a software SPI implementation by providing
+        # digital GPIO pin numbers for all the required display pins.  For example
+        # on a Raspberry Pi with the 128x32 display you might use:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, dc=DC, sclk=18, din=25, cs=22)
+
+        # Initialize library.
+        self.disp.begin()
+
+        # Clear display.
+        self.disp.clear()
+        self.disp.display()
+
+        # Create blank image for drawing.
+        # Make sure to create image with mode '1' for 1-bit color.
+        self.width = self.disp.width
+        self.height = self.disp.height
+        self.image = Image.new('1', (self.width, self.height))
+
+        # Get drawing object to draw on image.
+        self.draw = ImageDraw.Draw(self.image)
+
+        # Draw a black filled box to clear the image.
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+
+        # Draw some shapes.
+        # First define some constants to allow easy resizing of shapes.
+        self.padding = -2
+        self.top = self.padding
+        self.bottom = self.height-self.padding
+        # Move left to right keeping track of the current x position for drawing shapes.
+        self.x = 0
+        self.y=0
+
+        # Load default font.
+        self.font = ImageFont.load_default()
+        self.alt_font = ImageFont.truetype(font="/home/pi/workspace/frankie-steen/monofonto.ttf", size=10, index=0)
+
+    def stats(self):
+
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+
+        # Shell scripts for system monitoring from here : https://unix.stackexchange.com/questions/119126/command-to-display-memory-usage-disk-usage-and-cpu-load
+        cmd = "hostname -I | cut -d\' \' -f1"
+        IP = subprocess.check_output(cmd, shell = True )
+        cmd = "top -bn1 | grep load | awk '{printf \"CPU Load: %.2f\", $(NF-2)}'"
+        CPU = subprocess.check_output(cmd, shell = True )
+        cmd = "free -m | awk 'NR==2{printf \"Mem: %s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
+        MemUsage = subprocess.check_output(cmd, shell = True )
+        cmd = "df -h | awk '$NF==\"/\"{printf \"Disk: %d/%dGB %s\", $3,$2,$5}'"
+        Disk = subprocess.check_output(cmd, shell = True )
+
+        # Write two lines of text.
+
+        #self.draw.text((self.x, self.top),       "IP: " + str(IP),  font=self.alt_font, fill=255)
+        self.draw.text((self.x, self.top),     str(CPU), font=self.font, fill=255)
+        self.draw.text((self.x, self.top+8),    str(MemUsage),  font=self.font, fill=255)
+        #self.draw.text((self.x, self.top+25),    str(Disk),  font=self.alt_font, fill=255)
+
+        # Display image.
+        self.disp.image(self.image)
+        self.disp.display()
+
+    def scroll(self, text):
+
+        for line in self.line_split(text):
+            self.text.append(line)
+
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+        
+        try:
+            self.draw.text((0, 0), self.title, font=self.alt_font, fill=255)
+            for n in range(6):
+                
+                self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.alt_font, fill=255)
+
+        except IndexError:
+
+            pass
+
+        if not self.endloop:
+            self.disp.image(self.image)
+            self.disp.display()
+            
+
+
+    def line_split(self, text, line_length=19, reverse=True):
+
+        line_list = []
+
+        if len(text) > line_length:
+
+            lines = float(len(text))/float(line_length)
+
+            if float(lines) > float(int(lines)):
+
+                lines = int(lines) + 1
+
+            else:
+            
+                lines = int(lines)       
+
+            for line in range(lines):
+
+                if line != lines-1:
+
+                    line_list.append((text[line_length*line:line_length*(line+1)])+"-")
+
+                else:
+
+                    line_list.append(text[line_length*line:])
+        else:
+            line_list.append(text)
+
+        if reverse:
+            temp_list = []
+            for line in range(len(line_list)):
+                temp_list.append(line_list[(line+1)*-1])
+            line_list = temp_list
+        
+        return line_list
+
+
+    def cleanup(self):
+            print "cleaning up"
+            self.endloop = True
+            self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+            self.disp.image(self.image)
+            self.disp.display()
+            time.sleep(.1)
+
 #A logging class for better debugging over just printing to the console
+class ScreenHandler(logging.Handler):
+
+    def emit(self, record):
+        msg = self.format(record)
+        #display = interface.Display()
+        self.display.scroll(msg)
+
+    def set_display(self, display):
+        self.display = display
+
+
+
+
 class FrankiesLog:
 
     def __init__(self):
@@ -30,9 +221,12 @@ class FrankiesLog:
         # create formatter
         self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+
+
         # add formatter to ch and fh
         self.ch.setFormatter(self.formatter)
         self.fh.setFormatter(self.formatter)
+
 
         # add ch and fh to logger
         self.logger.addHandler(self.ch)
@@ -177,21 +371,37 @@ class RGBLightController():
 # class to handle status operations
 class Status():
 
-    def __init__(self, logger=""):
+    def __init__(self, logger="", display=""):
 
         #initialize lights on the Raspberry Pi
-        self.lite = RGBLightController( logger=logger,
-                                        red=config.GPIO_STATUS_RED,
-                                        green=config.GPIO_STATUS_GREEN,
-                                        blue=config.GPIO_STATUS_BLUE)
+        #self.lite = RGBLightController( logger=logger,
+         #                               red=config.GPIO_STATUS_RED,
+          #                              green=config.GPIO_STATUS_GREEN,
+           #                             blue=config.GPIO_STATUS_BLUE)
 
         #initalize light thread
-        self.lightthread = LightThread( logger=logger, lite=self.lite)
+        #self.lightthread = LightThread( logger=logger, lite=self.lite)
         #self.lightthread.start()
 
         self.logger = logger
-
+        self.display = display
+        self.display_mode = "STATS"
         self.current_status = ""
+
+    def update_display(self, mode=None, title="", text=""):
+
+        if not mode:
+            mode = self.display_mode
+
+
+        if mode == "SCROLL":
+            self.display_mode = "SCROLL"
+            self.display.title = title
+            self.display.scroll(text)
+
+        elif mode == "STATS":
+            self.display_mode = "STATS"
+            self.display.stats()
 
     def nominal(self):
 
@@ -312,15 +522,27 @@ class Switch():
                     switch_pin=0,
                     callbacks=[],
                     mode="BUTTON",
-                    glitch=100):
+                    glitch=500,
+                    PULL_UP_DOWN="DOWN"):
     
         self.pi = pi
         self.switch_pin = switch_pin
         self.callbacks = callbacks
         self.button_engaged = False
         self.mode = mode
+        self.current_chosen_dict = ""
         pi.set_mode(switch_pin, pigpio.INPUT)
         pi.set_glitch_filter(switch_pin, glitch)
+
+        if PULL_UP_DOWN == "DOWN":
+
+            self.ACTIVE = 0
+            self.NORMAL = 1
+
+        else:
+
+            self.ACTIVE = 1
+            self.NORMAL = 0
 
         self._start()
 
@@ -337,30 +559,20 @@ class Switch():
 
         index = 1
 
-        if level == 1:
+        if level == self.ACTIVE:
+
             self.rising_time = tick
             self.button_engaged = True
 
-        elif level == 0:
-
+        elif level == self.NORMAL:
+            self.chosen_dict = ""
             self.button_engaged = False
             self.falling_time = tick
 
             press_time = self.falling_time - self.rising_time
             press_time = float(press_time/1000000.0)
 
-            print press_time
-
-            current_high = -1.0
-            chosen_dict = {}
-
-            for func in self.callbacks:
-
-
-                if func["time"] <= press_time and func["time"] > current_high:
-
-                    current_high = func["time"]
-                    chosen_dict = func
+            chosen_dict = self.get_function(press_time)
 
             callback_function = chosen_dict["function"]
 
@@ -373,6 +585,46 @@ class Switch():
                 args = []
 
             callback_function(*args)
+
+    def get_function(self, press_time):
+
+            current_high = -1.0
+            chosen_dict = {}
+
+            for func in self.callbacks:
+
+
+                if func["time"] <= press_time and func["time"] > current_high:
+
+                    current_high = func["time"]
+                    chosen_dict = func
+
+            return chosen_dict
+
+    def check_button(self):
+
+        if self.button_engaged:
+
+            press_time = self.pi.get_current_tick() - self.rising_time
+            press_time = float(press_time/1000000.0)
+
+            chosen_dict = self.get_function(press_time)
+
+            if chosen_dict != self.current_chosen_dict:
+
+                self.current_chosen_dict = chosen_dict
+
+                try:
+                    notify_function = chosen_dict["notify_function"]
+                    notify_args = chosen_dict["notify_args"]
+                    notify_function(*notify_args)
+
+                except KeyError:
+
+                    pass
+
+
+
 
     def toggle(self, GPIO, level, tick):
 
@@ -404,6 +656,7 @@ class Switch():
 
             callback_function(*args)
 
+    
     def cleanup(self):
 
         cb1.cancel()

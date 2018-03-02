@@ -20,10 +20,21 @@ def btn_calibrate_cb0(pi):
     
     print "Callback 0"
 
+def btn_calibrate_n0(status):
+
+    print "notifying"
+
+    status.display.mode="SCROLL" 
+    status.display.text="notify1"
+    status.display.title="CALIBRATE PRESSED"
 
 def btn_calibrate_cb1():
     
     print "Callback 1"
+
+def btn_calibrate_n1(status):
+
+    status.update_display(mode="SCROLL", text="notify2", title="CALIBRATE PRESSED")
 
 
 
@@ -35,9 +46,24 @@ def main():
     #initialize 4 channel 16-bit analog to digital converter
     adc = Adafruit_ADS1x15.ADS1115()
 
+    display = interface.Display()
+
     # Create an instance of the logger
     frankies_log = interface.FrankiesLog().logger
 
+    status = interface.Status(logger=frankies_log, display=display)
+
+    
+    '''
+    #add a handler to the logger to output to the display
+    sh = interface.ScreenHandler()
+    sh.setLevel(config.LOG_SHELL_VERBOSITY)
+    sh.set_display(display)
+
+    simple_formatter =  logging.Formatter('%(message)s')
+    sh.setFormatter(simple_formatter)
+    frankies_log.addHandler(sh)
+    '''
     
     cleaner = helpers.Cleanup(frankies_log)
 
@@ -66,11 +92,15 @@ def main():
     btn_calibrate_cbs = [   
                             {   "function":btn_calibrate_cb0,
                                 "time":0.0,
-                                "args":[pi]},
+                                "args":[pi],
+                                "notify_function":btn_calibrate_n0,
+                                "notify_args":[status]},
                             
                             {   "function":btn_calibrate_cb1,
                                 "time":2.0,
-                                "args":[]}
+                                "args":[],
+                                "notify_function":btn_calibrate_n1,
+                                "notify_args":[status]}
                         ]
 
     btn_calibrate = interface.Switch(   pi=pi,
@@ -103,8 +133,6 @@ def main():
                                                         "LINEAR" )
                                                     )
 
-                print step_index
-
                 
                 stepper_sprocket.change_step_res(config.STEPPER_FLOATS[step_index])
                 stepper_sprocket.advance_frame()
@@ -131,6 +159,8 @@ def main():
                     last_warning = "Invalid Selection"
                     frankies_log.warning("%s is an invalid selection" % str(knob_select.get_value()))
 
+            btn_calibrate.check_button()
+            status.update_display()
             time.sleep(.02)
 
             #blue_light.set_light(mode="CONSTANT")

@@ -2,7 +2,7 @@
 
 LOG_LOCATION = "/var/log/frankie-steen.log"
 LOG_VERBOSITY = 10 #DEBUG 10, INFO 20, WARNING 30, ERROR 40, CRITICAL 50 -OUTPUT to file
-LOG_SHELL_VERBOSITY = 10 #Level of verbosity for what shows up in the shell
+LOG_SHELL_VERBOSITY = 20 #Level of verbosity for what shows up in the shell
 LOG_NAME = "frankie-steen"
 FRAME_COUNT = 0
 ROTATION = 0
@@ -38,9 +38,8 @@ STEPPER_EIGHT = [1,1,0]
 STEPPER_SIXT = [0,0,1]
 STEPPER_THIRT = [1,0,1]
 
-GPIO_STEPPER_1_DIR = 5
-GPIO_STEPPER_1_ON =  6
-GPIO_STEPPER_1_STEP = 13
+GPIO_MOTOR_1_DIR = 6
+GPIO_STEPPER_1_ON =  13
 
 GPIO_STATUS_RED = 16
 GPIO_STATUS_GREEN = 20
