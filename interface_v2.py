@@ -499,7 +499,8 @@ class Knob():
                     threshold=config.ADC_KNOB_THRESHOLD,
                     knob_hi=config.ADC_KNOB_HI,
                     knob_lo=config.ADC_KNOB_LO,
-                    translate_mode="LINEAR"):
+                    translate_mode="LINEAR",
+                    hard_limit=False):
         
         self.name = name
         self.pin = pin
@@ -515,6 +516,7 @@ class Knob():
 
         self.rising_time = 0
         self.falling_time = 0
+        self.hard_limit = hard_limit
 
     def get_selection(self):
         
@@ -530,6 +532,22 @@ class Knob():
         value = self.adc.read_adc(self.pin, gain=self.gain)
 
         mapped_value = helpers.translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1], self.translate_mode)
+
+        
+
+        if self.hard_limit:
+
+            if self.sweep_range[1] - self.sweep_range[0] > 0:
+                if mapped_value < self.sweep_range[0]:
+                    mapped_value = self.sweep_range[0]
+                elif mapped_value > self.sweep_range[1]:
+                    mapped_value = self.sweep_range[1]
+
+            else:
+                if mapped_value > self.sweep_range[0]:
+                    mapped_value = self.sweep_range[0]
+                elif mapped_value < self.sweep_range[1]:
+                    mapped_value = self.sweep_range[1]
 
         return mapped_value
 

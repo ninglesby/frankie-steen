@@ -21,7 +21,7 @@ class Stepper():
     
     def __init__(   self, logger="",
                     pi="",
-                    dir_pin=1,
+                    dir_pin=0,
                     on_pin=0,
                     step_pin=0,
                     mode0_pin=0,
@@ -42,11 +42,15 @@ class Stepper():
         self.mode1_pin = mode1_pin
         self.mode2_pin = mode2_pin
 
-        pi.write(self.step_pin, 1)
+        if self.step_pin:
+            pi.write(self.step_pin, 1)
+        if self.dir_pin:
+            pi.set_mode(self.dir_pin, pigpio.OUTPUT)
+        if self.on_pin:
+            pi.set_mode(self.on_pin, pigpio.OUTPUT)
 
-        pi.set_mode(self.dir_pin, pigpio.OUTPUT)
-        pi.set_mode(self.on_pin, pigpio.OUTPUT)
-        pi.set_mode(self.step_pin, pigpio.OUTPUT)
+        if self.step_pin:
+            pi.set_mode(self.step_pin, pigpio.OUTPUT)
 
         if self.mode0_pin:
             pi.set_mode(self.mode0_pin, pigpio.OUTPUT)
@@ -75,8 +79,34 @@ class Stepper():
         self.current_mode = ""
         self.frequency = 800
         self.translate_mode = translate_mode
+        self.dutycycle = 0
         
 
+
+    
+    def dc_motor(self, dutycycle=0):
+
+        if self.current_mode != "DC_MOTOR":
+
+            self.current_mode = "DC_MOTOR"
+
+            if self.logger:
+
+                self.logger.debug("DC Motor mode enabled")
+
+            else:
+
+                print "DC Motor mode enabled"
+
+        if dutycycle:
+
+            self.dutycycle = dutycycle
+
+        self.pi.set_PWM_frequency(self.step_pin, self.frequency)
+        self.pi.set_PWM_dutycycle(self.step_pin, self.dutycycle)
+        
+        if self.dutycycle <= 0:
+            self.pi.write(self.step_pin, 0)
 
     def motor(self):
 
@@ -227,68 +257,73 @@ class Stepper():
 
             self.step_res = step_res
 
+            if self.mode0_pin and self.mode1_pin and self.mode2_pin:
 
+                if step_res == "1" or step_res == 1.0: 
 
-            if step_res == "1" or step_res == 1.0: 
+                    self.logger.debug("Changed Step Res to 1. 0 - 0 - 0")
 
-                self.logger.debug("Changed Step Res to 1. 0 - 0 - 0")
+                    self.step_res_float = 1.0
+                    self.pi.write(self.mode0_pin, 0)
+                    self.pi.write(self.mode1_pin, 0)
+                    self.pi.write(self.mode2_pin, 0)
 
-                self.step_res_float = 1.0
-                self.pi.write(self.mode0_pin, 0)
-                self.pi.write(self.mode1_pin, 0)
-                self.pi.write(self.mode2_pin, 0)
+                elif step_res == "1/2" or step_res == .5:
 
-            elif step_res == "1/2" or step_res == .5:
+                    self.logger.debug("Changed Step Res to 1/2. 1 - 0 - 0")
 
-                self.logger.debug("Changed Step Res to 1/2. 1 - 0 - 0")
+                    self.step_res_float = 0.5
+                    self.pi.write(self.mode0_pin, 1)
+                    self.pi.write(self.mode1_pin, 0)
+                    self.pi.write(self.mode2_pin, 0)
 
-                self.step_res_float = 0.5
-                self.pi.write(self.mode0_pin, 1)
-                self.pi.write(self.mode1_pin, 0)
-                self.pi.write(self.mode2_pin, 0)
+                elif step_res == "1/4" or step_res == .25:
 
-            elif step_res == "1/4" or step_res == .25:
+                    self.logger.debug("Changed Step Res to 1/4. 0 - 1 - 0")
 
-                self.logger.debug("Changed Step Res to 1/4. 0 - 1 - 0")
+                    self.step_res_float = 0.25
+                    self.pi.write(self.mode0_pin, 0)
+                    self.pi.write(self.mode1_pin, 1)
+                    self.pi.write(self.mode2_pin, 0)
 
-                self.step_res_float = 0.25
-                self.pi.write(self.mode0_pin, 0)
-                self.pi.write(self.mode1_pin, 1)
-                self.pi.write(self.mode2_pin, 0)
+                elif step_res == "1/8" or step_res == .125:
 
-            elif step_res == "1/8" or step_res == .125:
+                    self.logger.debug("Changed Step Res to 1/8. 1 - 1 - 0")
 
-                self.logger.debug("Changed Step Res to 1/8. 1 - 1 - 0")
+                    self.step_res_float = 0.125
+                    self.pi.write(self.mode0_pin, 1)
+                    self.pi.write(self.mode1_pin, 1)
+                    self.pi.write(self.mode2_pin, 0)
 
-                self.step_res_float = 0.125
-                self.pi.write(self.mode0_pin, 1)
-                self.pi.write(self.mode1_pin, 1)
-                self.pi.write(self.mode2_pin, 0)
+                elif step_res == "1/16" or step_res == .0625:
 
-            elif step_res == "1/16" or step_res == .0625:
+                    self.logger.debug("Changed Step Res to 1/16. 0 - 0 - 1")
 
-                self.logger.debug("Changed Step Res to 1/16. 0 - 0 - 1")
+                    self.step_res_float = 0.0625
+                    self.pi.write(self.mode0_pin, 0)
+                    self.pi.write(self.mode1_pin, 0)
+                    self.pi.write(self.mode2_pin, 1)
 
-                self.step_res_float = 0.0625
-                self.pi.write(self.mode0_pin, 0)
-                self.pi.write(self.mode1_pin, 0)
-                self.pi.write(self.mode2_pin, 1)
+                elif step_res == "1/32" or step_res == .03125:
 
-            elif step_res == "1/32" or step_res == .03125:
+                    self.logger.debug("Changed Step Res to 1/32. 1 - 0 - 1")
 
-                self.logger.debug("Changed Step Res to 1/32. 1 - 0 - 1")
-
-                self.step_res_float = 0.03125
-                self.pi.write(self.mode0_pin, 1)
-                self.pi.write(self.mode1_pin, 0)
-                self.pi.write(self.mode2_pin, 1)
+                    self.step_res_float = 0.03125
+                    self.pi.write(self.mode0_pin, 1)
+                    self.pi.write(self.mode1_pin, 0)
+                    self.pi.write(self.mode2_pin, 1)
 
     def cleanup(self):
 
+        if self.dir_pin:
+            self.pi.write(self.dir_pin, 0)
 
-        self.pi.write(self.dir_pin, 0)
-        self.pi.write(self.on_pin, 0)
-        self.pi.write(self.step_pin, 0)
+        if self.on_pin:
+            self.pi.write(self.on_pin, 0)
+
+        if self.step_pin: 
+            self.pi.write(self.step_pin, 0)
+            self.pi.set_PWM_dutycycle(self.step_pin, 0)
         
         if self.mode0_pin:
             self.pi.write(self.mode0_pin, 0)

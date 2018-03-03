@@ -25,8 +25,8 @@ def btn_calibrate_n0(status):
 
     print "notifying"
 
-    status.display.mode="SCROLL" 
-    status.display.text.append("notify1")
+    #status.display.mode="SCROLL" 
+    #status.display.text.append("notify1")
     status.display.title="CALIBRATE PRESSED"
 
 def btn_calibrate_cb1():
@@ -35,7 +35,7 @@ def btn_calibrate_cb1():
 
 def btn_calibrate_n1(status):
 
-    status.update_display(mode="SCROLL", text="notify2", title="CALIBRATE PRESSED")
+    status.dispay.message(text=["notify2"], title="CALIBRATE PRESSED")
 
 
 
@@ -94,13 +94,22 @@ def main():
                                                 mode0_pin=config.GPIO_STEPPER_2_MODE0,
                                                 mode1_pin=config.GPIO_STEPPER_2_MODE1,
                                                 mode2_pin=config.GPIO_STEPPER_2_MODE2 )
-    cleaner.cleanup_list.append(stepper_sprocket_02)
+
+    motor_takeup = physical_control.Stepper(    pi=pi,
+                                                logger=frankies_log,
+                                                dir_pin=config.GPIO_MOTOR_1_DIR,
+                                                step_pin=config.GPIO_STEPPER_1_ON,
+                                                )
+    cleaner.cleanup_list.append(motor_takeup)
 
     knob_spring = interface.Knob(   pin=config.ADC_KNOB_1, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[-1,1] )
     cleaner.cleanup_list.append(knob_spring)
 
     knob_select = interface.Knob(   pin=config.ADC_KNOB_0, adc=adc, mode=config.ADC_KNOB_SELECT, selections=2 )
     cleaner.cleanup_list.append(knob_select)
+
+    knob_motor = interface.Knob(   pin=config.ADC_KNOB_2, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[0.0,1.0], hard_limit=True )
+    cleaner.cleanup_list.append(knob_motor)
     
     blue_light = interface.Light(   pi=pi,
                                     logger=frankies_log,
@@ -138,6 +147,21 @@ def main():
     try:
 
         while True:
+
+            motor_dutycycle = helpers.translate(    knob_motor.get_value(),
+                                                    knob_motor.sweep_range[0],
+                                                    knob_motor.sweep_range[1],
+                                                    0,
+                                                    255,
+                                                    "EXP")
+
+            motor_dutycycle -= 30
+
+            if motor_dutycycle < 0:
+                motor_dutycycle = 0
+
+            motor_takeup.dc_motor(dutycycle=motor_dutycycle)
+                                                                
 
             if knob_select.get_selection() == 1:
 
