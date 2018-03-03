@@ -28,7 +28,7 @@ class Stepper():
                     mode1_pin=0,
                     mode2_pin=0,
                     mode="stepper",
-                    default_dir=1,
+                    default_dir=0,
                     frequencies=config.GPIO_FREQUENCIES,
                     floats=config.STEPPER_FLOATS,
                     translate_mode="LOG"):
@@ -41,6 +41,8 @@ class Stepper():
         self.mode0_pin = mode0_pin
         self.mode1_pin = mode1_pin
         self.mode2_pin = mode2_pin
+
+        pi.write(self.step_pin, 1)
 
         pi.set_mode(self.dir_pin, pigpio.OUTPUT)
         pi.set_mode(self.on_pin, pigpio.OUTPUT)
@@ -61,6 +63,7 @@ class Stepper():
         self.stop = False
         self.steps = 0
         self.step_res_float = 1.0
+        self.step_res = None
         self.mode = mode
         self.logger = logger
         self. current_step_res = None
@@ -209,18 +212,20 @@ class Stepper():
 
         self.steps = int(config.STEPPER_FRAME_DEGREE * steps_per_degree)
 
+        self.logger.debug("Advance Frame by %s" % str(self.steps))
+
         
 
     def change_step_res(self, step_res):
 
 
-        if step_res == config.STEPPER_RES:
+        if step_res == self.step_res:
 
             pass
 
         else:
 
-            config.STEPPER_RES = step_res
+            self.step_res = step_res
 
 
 

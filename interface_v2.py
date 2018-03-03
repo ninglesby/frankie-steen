@@ -23,6 +23,7 @@ class Display():
         self.counter = 0
         self.mode = 0
         self.text = []
+        self.text_str = ""
         self.title = ""
         self.endloop = False
         # Raspberry Pi pin configuration:
@@ -122,25 +123,46 @@ class Display():
 
     def scroll(self, text):
 
-        for line in self.line_split(text):
-            self.text.append(line)
+        if text:
+            for line in self.line_split(text):
+                self.text.append(line)
+
+            self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+            
+            try:
+                self.draw.text((0, 0), self.title, font=self.font, fill=255)
+                for n in range(6):
+                    
+                    self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.font, fill=255)
+
+            except IndexError:
+
+                pass
+
+            if not self.endloop:
+                self.disp.image(self.image)
+                self.disp.display()
+
+    def message(self, text=[], title=""):
 
         self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+        if title:
+            self.title = title    
         
-        try:
-            self.draw.text((0, 0), self.title, font=self.alt_font, fill=255)
-            for n in range(6):
-                
-                self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.alt_font, fill=255)
+        self.draw.text((0, 0), self.title, font=self.font, fill=255)
+        if text:
+            self.text = text
 
-        except IndexError:
+        else:
 
-            pass
+            n = 0
+            for line in self.text:
+                self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.font, fill=255)
+                n += 1    
 
         if not self.endloop:
             self.disp.image(self.image)
-            self.disp.display()
-            
+            self.disp.display()           
 
 
     def line_split(self, text, line_length=19, reverse=True):
@@ -385,7 +407,7 @@ class Status():
 
         self.logger = logger
         self.display = display
-        self.display_mode = "STATS"
+        self.display_mode = "SCROLL"
         self.current_status = ""
 
     def update_display(self, mode=None, title="", text=""):
@@ -396,7 +418,8 @@ class Status():
 
         if mode == "SCROLL":
             self.display_mode = "SCROLL"
-            self.display.title = title
+            if title:
+                self.display.title = title
             self.display.scroll(text)
 
         elif mode == "STATS":
@@ -467,6 +490,7 @@ class Status():
 class Knob():
 
     def __init__(   self, 
+                    name = "Knob",
                     pin=0,
                     adc="",
                     mode=config.ADC_KNOB_SWEEP,
@@ -477,6 +501,7 @@ class Knob():
                     knob_lo=config.ADC_KNOB_LO,
                     translate_mode="LINEAR"):
         
+        self.name = name
         self.pin = pin
         self.adc = adc
         self.mode = mode
@@ -518,6 +543,8 @@ class Knob():
 class Switch():
 
     def __init__(   self,
+                    logger="",
+                    name="Switch",
                     pi="",
                     switch_pin=0,
                     callbacks=[],
@@ -525,6 +552,8 @@ class Switch():
                     glitch=500,
                     PULL_UP_DOWN="DOWN"):
     
+        self.logger = logger
+        self.name = name
         self.pi = pi
         self.switch_pin = switch_pin
         self.callbacks = callbacks
@@ -550,10 +579,10 @@ class Switch():
     def _start(self):
 
         if self.mode == "BUTTON":
-            cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.button_callback)
+            self.cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.button_callback)
 
         elif self.mode == "TOGGLE":
-            cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.toggle_callback)
+            self.cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.toggle_callback)
 
     def button_callback(self, GPIO, level, tick):
 
@@ -569,13 +598,20 @@ class Switch():
             self.button_engaged = False
             self.falling_time = tick
 
-            press_time = self.falling_time - self.rising_time
+            press_time = self.pi.get_current_tick() - self.rising_time 
             press_time = float(press_time/1000000.0)
 
             chosen_dict = self.get_function(press_time)
 
-            callback_function = chosen_dict["function"]
+            try:
 
+                callback_function = chosen_dict["function"]
+
+            except KeyError:
+
+                self.logger.warning("No callback for %s" % self.name)
+
+                return
             try:
 
                 args = chosen_dict["args"]
@@ -659,7 +695,7 @@ class Switch():
     
     def cleanup(self):
 
-        cb1.cancel()
+        self.cb1.cancel()
 
 
 
