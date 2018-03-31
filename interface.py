@@ -1,27 +1,228 @@
 import logging
 import threading
 import time
+import subprocess
+from PIL import Image
+from PIL import ImageDraw
+from PIL import ImageFont
 
 import RPi.GPIO as GPIO
+import pigpio
+import Adafruit_GPIO.SPI as SPI
+import Adafruit_SSD1306
 
-import physical_control
 import config
+import helpers
+import interface_v2 as interface
+
+
+class Display():
+    def __init__(self):
+        """ constructor, setting initial variables """
+        self._sleepperiod = 1.0
+        self.counter = 0
+        self.mode = 0
+        self.text = []
+        self.text_str = ""
+        self.title = ""
+        self.endloop = False
+        # Raspberry Pi pin configuration:
+        RST = None     # on the PiOLED this pin isnt used
+        # Note the following are only used with SPI:
+        DC = 23
+        SPI_PORT = 0
+        SPI_DEVICE = 0
+
+        # Beaglebone Black pin configuration:
+        # RST = 'P9_12'
+        # Note the following are only used with SPI:
+        # DC = 'P9_15'
+        # SPI_PORT = 1
+        # SPI_DEVICE = 0
+
+        # 128x32 display with hardware I2C:
+        self.disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
+
+        # 128x64 display with hardware I2C:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST)
+
+        # Note you can change the I2C address by passing an i2c_address parameter like:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, i2c_address=0x3C)
+
+        # Alternatively you can specify an explicit I2C bus number, for example
+        # with the 128x32 display you would use:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, i2c_bus=2)
+
+        # 128x32 display with hardware SPI:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE, max_speed_hz=8000000))
+
+        # 128x64 display with hardware SPI:
+        # disp = Adafruit_SSD1306.SSD1306_128_64(rst=RST, dc=DC, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE, max_speed_hz=8000000))
+
+        # Alternatively you can specify a software SPI implementation by providing
+        # digital GPIO pin numbers for all the required display pins.  For example
+        # on a Raspberry Pi with the 128x32 display you might use:
+        # disp = Adafruit_SSD1306.SSD1306_128_32(rst=RST, dc=DC, sclk=18, din=25, cs=22)
+
+        # Initialize library.
+        self.disp.begin()
+
+        # Clear display.
+        self.disp.clear()
+        self.disp.display()
+
+        # Create blank image for drawing.
+        # Make sure to create image with mode '1' for 1-bit color.
+        self.width = self.disp.width
+        self.height = self.disp.height
+        self.image = Image.new('1', (self.width, self.height))
+
+        # Get drawing object to draw on image.
+        self.draw = ImageDraw.Draw(self.image)
+
+        # Draw a black filled box to clear the image.
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+
+        # Draw some shapes.
+        # First define some constants to allow easy resizing of shapes.
+        self.padding = -2
+        self.top = self.padding
+        self.bottom = self.height-self.padding
+        # Move left to right keeping track of the current x position for drawing shapes.
+        self.x = 0
+        self.y=0
+
+        # Load default font.
+        self.font = ImageFont.load_default()
+        self.alt_font = ImageFont.truetype(font="/home/pi/workspace/frankie-steen/monofonto.ttf", size=10, index=0)
+
+    def stats(self):
+
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+
+        # Shell scripts for system monitoring from here : https://unix.stackexchange.com/questions/119126/command-to-display-memory-usage-disk-usage-and-cpu-load
+        cmd = "hostname -I | cut -d\' \' -f1"
+        IP = subprocess.check_output(cmd, shell = True )
+        cmd = "top -bn1 | grep load | awk '{printf \"CPU Load: %.2f\", $(NF-2)}'"
+        CPU = subprocess.check_output(cmd, shell = True )
+        cmd = "free -m | awk 'NR==2{printf \"Mem: %s/%sMB %.2f%%\", $3,$2,$3*100/$2 }'"
+        MemUsage = subprocess.check_output(cmd, shell = True )
+        cmd = "df -h | awk '$NF==\"/\"{printf \"Disk: %d/%dGB %s\", $3,$2,$5}'"
+        Disk = subprocess.check_output(cmd, shell = True )
+
+        # Write two lines of text.
+
+        #self.draw.text((self.x, self.top),       "IP: " + str(IP),  font=self.alt_font, fill=255)
+        self.draw.text((self.x, self.top),     str(CPU), font=self.font, fill=255)
+        self.draw.text((self.x, self.top+8),    str(MemUsage),  font=self.font, fill=255)
+        #self.draw.text((self.x, self.top+25),    str(Disk),  font=self.alt_font, fill=255)
+
+        # Display image.
+        self.disp.image(self.image)
+        self.disp.display()
+
+    def scroll(self, text):
+
+        if text:
+            for line in self.line_split(text):
+                self.text.append(line)
+
+            self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+            
+            try:
+                self.draw.text((0, 0), self.title, font=self.font, fill=255)
+                for n in range(6):
+                    
+                    self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.font, fill=255)
+
+            except IndexError:
+
+                pass
+
+            if not self.endloop:
+                self.disp.image(self.image)
+                self.disp.display()
+
+    def message(self, text=[], title=""):
+
+        self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+        if title:
+            self.title = title    
+        
+        self.draw.text((0, 0), self.title, font=self.font, fill=255)
+        if text:
+            self.text = text
+
+        else:
+
+            n = 0
+            for line in self.text:
+                self.draw.text((0, ((n)*8)+14),       self.text[0-(n+1)],  font=self.font, fill=255)
+                n += 1    
+
+        if not self.endloop:
+            self.disp.image(self.image)
+            self.disp.display()           
+
+
+    def line_split(self, text, line_length=19, reverse=True):
+
+        line_list = []
+
+        if len(text) > line_length:
+
+            lines = float(len(text))/float(line_length)
+
+            if float(lines) > float(int(lines)):
+
+                lines = int(lines) + 1
+
+            else:
+            
+                lines = int(lines)       
+
+            for line in range(lines):
+
+                if line != lines-1:
+
+                    line_list.append((text[line_length*line:line_length*(line+1)])+"-")
+
+                else:
+
+                    line_list.append(text[line_length*line:])
+        else:
+            line_list.append(text)
+
+        if reverse:
+            temp_list = []
+            for line in range(len(line_list)):
+                temp_list.append(line_list[(line+1)*-1])
+            line_list = temp_list
+        
+        return line_list
+
+
+    def cleanup(self):
+            print "cleaning up"
+            self.endloop = True
+            self.draw.rectangle((0,0,self.width,self.height), outline=0, fill=0)
+            self.disp.image(self.image)
+            self.disp.display()
+            time.sleep(.1)
+
+#A logging class for better debugging over just printing to the console
+class ScreenHandler(logging.Handler):
+
+    def emit(self, record):
+        msg = self.format(record)
+        #display = interface.Display()
+        self.display.scroll(msg)
+
+    def set_display(self, display):
+        self.display = display
 
 
 
-def set_gpio_mode():
-    # set mode, I don't remember the other mode right now
-    if config.GPIO_MODE == "BCM":
-
-        GPIO.setmode(GPIO.BCM)
-
-        return False
-
-    else:
-
-        GPIO.setmode(GPIO.BCM)
-
-        return "Unknown GPIO mode, setting to BCM"
 
 class FrankiesLog:
 
@@ -42,169 +243,96 @@ class FrankiesLog:
         # create formatter
         self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+
+
         # add formatter to ch and fh
         self.ch.setFormatter(self.formatter)
         self.fh.setFormatter(self.formatter)
+
 
         # add ch and fh to logger
         self.logger.addHandler(self.ch)
         self.logger.addHandler(self.fh)
 
 
+#A class for setting up an individual light
 
-# a thread classns\n\
+class Light():
 
-# a thread class to allow asynchronous changes to the light
-class LightThread(threading.Thread):
-    
-    def __init__(self, name='LightThread', logger="", lite=False):
-        """ constructor, setting initial variables """
-        #MODE 0: Off
-        #MODE 1: Cycle through all the hues at 100% brightness
-        #MODE 2: Constant Color
-        #MODE 3: Slow Blink
-        #MODE 4: Medium Blink
-        #MODE 5: Fast Blink
-        #MODE 6: Slow Pulse
-        #MODE 7: Medium Pulse
-        #MODE 8: Fast Pulse
-        self._stopevent = threading.Event( )
-        self._sleepperiod = 1.0
-        self.counter = 0
-        self.mode = 0
-        self.lite = lite
-        self.color = [0,0,0]
-        self.break_routine = False
-        self.current_mode = 0
+    def __init__(self, pi="", logger=None, light_pin=0, mode="CONSTANT", brightness=255, blink_speed=0):
+
+        self.light_pin = light_pin
+        self.mode = mode
+        self.brightness = brightness
+        self.blink_speed = blink_speed
+        self.frequency  = 200
         self.logger = logger
-        threading.Thread.__init__(self, name=name)
+        self.pi = pi
 
-    def run(self):
+    def set_light(self, mode=None, brightness=None, blink_speed=None):
 
-        on = True
+        if mode:
+            self.mode = mode
 
-        while not self._stopevent.isSet():
+        if brightness:
+            self.brightness = brightness
 
-            self.current_mode = self.mode
-            
-            if not self.mode == 0:
-                on = True
-                
-                # cyle through all the hues
-                while self.mode == 1 and not self._stopevent.isSet(): 
-
-                    self.current_mode = self.mode
-
-                    for x in range(100):
-                        if self.mode != self.current_mode or self._stopevent.isSet:
-                            break
-                        self.lite.hsl(x, 100, 100)
-                        time.sleep(.01)
-                
-                # constant on
-                while self.mode == 2 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.lite.rgb(self.color[0], self.color[1], self.color[2])
-                    time.sleep(.1)
-                
-                ####BLINKS####  
-                while self.mode == 3 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=1)
-
-                while self.mode == 4 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5)
-
-                while self.mode == 5 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.blink(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25)
+        if blink_speed:
+            self.blink_speed = blink_speed
 
 
-                ####PULSES####
-                while self.mode == 6 and not self._stopevent.isSet():
-                    self.current_mode = self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=1, step_size=60)
+        if self.mode == "CONSTANT":
 
-                while self.mode == 7 and not self._stopevent.isSet():
-                    self.current_mode= self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.5, step_size=30)
+            self.pi.write(self.light_pin, 1)
+            self.pi.set_PWM_frequency(self.light_pin, 200)
+            self.pi.set_PWM_dutycycle(self.light_pin, self.brightness)
 
-                while self.mode == 8 and not self._stopevent.isSet():
-                    self.current_mode= self.mode
-                    self.pulse(r=self.color[0],g=self.color[1], b=self.color[2], speed=.25, step_size=15)
+        elif self.mode == "BLINK":
+
+            self.pi.write(self.light_pin, 1)
+
+            self.set_speed(self.blink_speed)
+
+            self.pi.set_PWM_dutycycle(self.light_pin, 150)
+
+            return ""
+
+        else:
+
+            return "Invalid mode"
+
+    def set_speed(self, blink_speed=None):
+
+        speeds = [  10,
+                    20,
+                    40,
+                    50,
+                    80,
+                    100,
+                    160,
+                    200,
+                    250]
+
+        if blink_speed:
+            self.blink_speed = blink_speed
+
+        self.pi.set_PWM_frequency(self.light_pin, speeds[self.blink_speed])
 
 
-                    
-            elif on and self.mode == 0:
-                self.current_mode = self.mode
-                self.lite.hsl(0,0,0)
-                on = False
-            else:
-                time.sleep(.05)
-
-    def notify(self):
-
-
-        for x in range(5):
-
-            self.blink(r=self.color[0], g=self.color[1], b=self.color[2], speed=.25)
-
-    def blink(self, r=100, g=100, b=100, speed=.5):
-
-        r = r/100.0
-        g= g/100.0
-        b= b/100.0
-
-        self.lite.rgb(r, g, b)
-        time.sleep(speed)
-        self.lite.rgb(0, 0, 0)
-        time.sleep(speed)
-
-    def pulse(self, r=100.0, g=100.0, b=100.0, speed=.5, step_size=50):
-
-        r = r/100.0
-        g= g/100.0
-        b= b/100.0
-
-        for x in range(step_size):
-            if  self.mode != self.current_mode or self._stopevent.isSet:
-                return
-            else:
-
-                print math.sin((x*(math.pi/step_size)))*100
-                self.lite.rgb()
-            time.sleep(speed*2/step_size)
-
-    def join(self, timeout=None):
-        # Stop the thread and wait for it to end.
-        self._stopevent.set( )
-        threading.Thread.join(self, timeout)
-        
-    def rgbSet(self, led_r, led_g, led_b, r, g, b):
-        led_r.ChangeDutyCycle(r)
-        led_g.ChangeDutyCycle(g)
-        led_b.ChangeDutyCycle(b)
 
 
 # Controls for RGB light on a raspberry pi
 class RGBLightController():
     
-    def __init__(self, logger="", red=27, green=17, blue=26, freq=50):
+    def __init__(self, pi="", logger="", red=27, green=17, blue=26, freq=50):
 
-        GPIO.setup(red, GPIO.OUT)
-        GPIO.setup(green, GPIO.OUT)
-        GPIO.setup(blue, GPIO.OUT)
+        pi.set_mode(red, pigpio.OUTPUT)
+        pi.set_mode(green, pigpio.OUTPUT)
+        pi.set_mode(blue, pigpio.OUTPUT)
         self.red = red
         self.green = green
         self.blue = blue
-        self.pwm_r = GPIO.PWM(red, freq)
-        self.pwm_g = GPIO.PWM(green, freq)
-        self.pwm_b = GPIO.PWM(blue, freq)
-        
-        self.pwm_r.start(0)
-        self.pwm_g.start(0)
-        self.pwm_b.start(0)
+
         
         self.logger = logger
 
@@ -225,15 +353,16 @@ class RGBLightController():
             elif rgb[c] < 0.0:
                 rgb[c] = 0.0
         
-        self.pwm_r.ChangeDutyCycle(rgb["r"])
-        self.pwm_g.ChangeDutyCycle(rgb["g"])
-        self.pwm_b.ChangeDutyCycle(rgb["b"])
+        self.pi.set_PWM_dutycycle(self.red, rgb["r"])
+        self.pi.set_PWM_dutycycle(self.green, rgb["g"])
+        self.pi.set_PWM_dutycycle(self.blue, rgb["b"])
 
     def rgb(self, r, g, b):
 
-        self.pwm_r.ChangeDutyCycle(r)
-        self.pwm_g.ChangeDutyCycle(g)
-        self.pwm_b.ChangeDutyCycle(b)
+        self.pi.set_PWM_dutycycle(self.red, rgb["r"])
+        self.pi.set_PWM_dutycycle(self.green, rgb["g"])
+        self.pi.set_PWM_dutycycle(self.blue, rgb["b"])
+
         
     def hueCycle(self, percent):
 
@@ -257,28 +386,45 @@ class RGBLightController():
 
     def cleanup(self):
 
-        GPIO.cleanup(self.red)
-        GPIO.cleanup(self.green)
-        GPIO.cleanup(self.blue)
+        self.pi.write(self.red,0)
+        self.pi.write(self.green,0)
+        self.pi.write(self.blue,0)
 
 # class to handle status operations
 class Status():
 
-    def __init__(self, logger=""):
+    def __init__(self, logger="", display=""):
 
         #initialize lights on the Raspberry Pi
-        self.lite = RGBLightController( logger=logger,
-                                        red=config.GPIO_STATUS_RED,
-                                        green=config.GPIO_STATUS_GREEN,
-                                        blue=config.GPIO_STATUS_BLUE)
+        #self.lite = RGBLightController( logger=logger,
+         #                               red=config.GPIO_STATUS_RED,
+          #                              green=config.GPIO_STATUS_GREEN,
+           #                             blue=config.GPIO_STATUS_BLUE)
 
         #initalize light thread
-        self.lightthread = LightThread( logger=logger, lite=self.lite)
+        #self.lightthread = LightThread( logger=logger, lite=self.lite)
         #self.lightthread.start()
 
         self.logger = logger
-
+        self.display = display
+        self.display_mode = "SCROLL"
         self.current_status = ""
+
+    def update_display(self, mode=None, title="", text=""):
+
+        if not mode:
+            mode = self.display_mode
+
+
+        if mode == "SCROLL":
+            self.display_mode = "SCROLL"
+            if title:
+                self.display.title = title
+            self.display.scroll(text)
+
+        elif mode == "STATS":
+            self.display_mode = "STATS"
+            self.display.stats()
 
     def nominal(self):
 
@@ -321,6 +467,7 @@ class Status():
             self.current_status = "success"
             self.logger.info("Status changed to success")
 
+
     def snap(self):
 
         self.lightthread.notify()
@@ -337,4 +484,245 @@ class Status():
     def cleanup(self):
         #self.lightthread.join()
         self.lite.cleanup()
+
+
+
+class Knob():
+
+    def __init__(   self, 
+                    name = "Knob",
+                    pin=0,
+                    adc="",
+                    mode=config.ADC_KNOB_SWEEP,
+                    selections=0,
+                    sweep_range=[0,1],
+                    threshold=config.ADC_KNOB_THRESHOLD,
+                    knob_hi=config.ADC_KNOB_HI,
+                    knob_lo=config.ADC_KNOB_LO,
+                    translate_mode="LINEAR",
+                    hard_limit=False):
+        
+        self.name = name
+        self.pin = pin
+        self.adc = adc
+        self.mode = mode
+        self.selections = selections
+        self.sweep_range = sweep_range
+        self.threshold = threshold
+        self.knob_hi = knob_hi
+        self.knob_lo = knob_lo
+        self.gain = config.ADC_GAIN
+        self.translate_mode = translate_mode
+
+        self.rising_time = 0
+        self.falling_time = 0
+        self.hard_limit = hard_limit
+
+    def get_selection(self):
+        
+        value = self.adc.read_adc(self.pin, gain=self.gain)
+
+        selection = int(round(helpers.translate(value, self.knob_hi, self.knob_lo, 1, self.selections)))
+
+        return selection
+
+
+    def get_value(self):
+
+        value = self.adc.read_adc(self.pin, gain=self.gain)
+
+        mapped_value = helpers.translate(value, self.knob_lo, self.knob_hi, self.sweep_range[0],self.sweep_range[1], self.translate_mode)
+
+        
+
+        if self.hard_limit:
+
+            if self.sweep_range[1] - self.sweep_range[0] > 0:
+                if mapped_value < self.sweep_range[0]:
+                    mapped_value = self.sweep_range[0]
+                elif mapped_value > self.sweep_range[1]:
+                    mapped_value = self.sweep_range[1]
+
+            else:
+                if mapped_value > self.sweep_range[0]:
+                    mapped_value = self.sweep_range[0]
+                elif mapped_value < self.sweep_range[1]:
+                    mapped_value = self.sweep_range[1]
+
+        return mapped_value
+
+    def get_real_value(self):
+
+        return self.adc.read_adc(self.pin, gain=self.gain)
+
+    def cleanup(self):
+
+        return True
+
+
+
+
+class Switch():
+
+    def __init__(   self,
+                    logger="",
+                    name="Switch",
+                    pi="",
+                    switch_pin=0,
+                    callbacks=[],
+                    mode="BUTTON",
+                    glitch=500,
+                    PULL_UP_DOWN="DOWN"):
+    
+        self.logger = logger
+        self.name = name
+        self.pi = pi
+        self.switch_pin = switch_pin
+        self.callbacks = callbacks
+        self.button_engaged = False
+        self.mode = mode
+        self.current_chosen_dict = ""
+        pi.set_mode(switch_pin, pigpio.INPUT)
+        pi.set_glitch_filter(switch_pin, glitch)
+
+        if PULL_UP_DOWN == "DOWN":
+
+            self.ACTIVE = 0
+            self.NORMAL = 1
+
+        else:
+
+            self.ACTIVE = 1
+            self.NORMAL = 0
+
+        self._start()
+
+
+    def _start(self):
+
+        if self.mode == "BUTTON":
+            self.cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.button_callback)
+
+        elif self.mode == "TOGGLE":
+            self.cb1 = self.pi.callback(self.switch_pin, pigpio.EITHER_EDGE, self.toggle_callback)
+
+    def button_callback(self, GPIO, level, tick):
+
+        index = 1
+
+        if level == self.ACTIVE:
+
+            self.rising_time = tick
+            self.button_engaged = True
+
+        elif level == self.NORMAL:
+            self.chosen_dict = ""
+            self.button_engaged = False
+            self.falling_time = tick
+
+            press_time = self.pi.get_current_tick() - self.rising_time 
+            press_time = float(press_time/1000000.0)
+
+            chosen_dict = self.get_function(press_time)
+
+            try:
+
+                callback_function = chosen_dict["function"]
+
+            except KeyError:
+
+                self.logger.warning("No callback for %s" % self.name)
+
+                return
+            try:
+
+                args = chosen_dict["args"]
+
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+    def get_function(self, press_time):
+
+            current_high = -1.0
+            chosen_dict = {}
+
+            for func in self.callbacks:
+
+
+                if func["time"] <= press_time and func["time"] > current_high:
+
+                    current_high = func["time"]
+                    chosen_dict = func
+
+            return chosen_dict
+
+    def check_button(self):
+
+        if self.button_engaged:
+
+            press_time = self.pi.get_current_tick() - self.rising_time
+            press_time = float(press_time/1000000.0)
+
+            chosen_dict = self.get_function(press_time)
+
+            if chosen_dict != self.current_chosen_dict:
+
+                self.current_chosen_dict = chosen_dict
+
+                try:
+                    notify_function = chosen_dict["notify_function"]
+                    notify_args = chosen_dict["notify_args"]
+                    notify_function(*notify_args)
+
+                except KeyError:
+
+                    pass
+
+
+
+
+    def toggle(self, GPIO, level, tick):
+
+        if self.pi.read(self.switch_pin):
+
+            callback_function = self.callbacks[1]["function"]
+
+            try:
+                
+                args = self.callback_function[1]["args"]
+            
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+        else:
+
+            callback_function = self.callbacks[0]["function"]
+
+            try:
+
+                args = self.callbacks[0]["args"]
+
+            except KeyError:
+
+                args = []
+
+            callback_function(*args)
+
+    
+    def cleanup(self):
+
+        self.cb1.cancel()
+
+
+
+
+
+
+
 
