@@ -15,7 +15,7 @@ import helpers
 
 
 
-
+#Class has functions to control stepper motors and normal DC Motors
 
 class Stepper():
     
@@ -33,15 +33,17 @@ class Stepper():
                     floats=config.STEPPER_FLOATS,
                     translate_mode="LOG"):
 
-        self.pi = pi
-        self.dir_pin = dir_pin
-        self.default_dir = default_dir
-        self.on_pin = on_pin
-        self.step_pin = step_pin
-        self.mode0_pin = mode0_pin
+        self.pi = pi #pigpiod object
+        self.dir_pin = dir_pin #Bool for direction of rotation
+        self.default_dir = default_dir 
+        self.on_pin = on_pin #For steppers, this energizes the coil, motors allows the motor to function
+        self.step_pin = step_pin #Send pulses to the the coil
+        
+        self.mode0_pin = mode0_pin #Set modes for step size
         self.mode1_pin = mode1_pin
         self.mode2_pin = mode2_pin
 
+        #Setup any pins that are being used
         if self.step_pin:
             pi.write(self.step_pin, 1)
         if self.dir_pin:
@@ -61,6 +63,7 @@ class Stepper():
         if self.mode2_pin:
             pi.set_mode(self.mode2_pin, pigpio.OUTPUT)
 
+        
         self.speed = 0
         self.dir = 1
         self.energized = 1
@@ -78,7 +81,7 @@ class Stepper():
         self.threshold = config.ADC_KNOB_THRESHOLD
         self.current_mode = ""
         self.frequency = 800
-        self.translate_mode = translate_mode
+        self.translate_mode = translate_mode #change how we interpret speed
         self.dutycycle = 0
         
 

@@ -13,8 +13,7 @@ import Adafruit_SSD1306
 
 import config
 import helpers
-import interface_v2 as interface
-
+import interface
 
 class Display():
     def __init__(self):
