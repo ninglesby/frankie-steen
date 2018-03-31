@@ -10,7 +10,7 @@ ROTATION = 0
 #####STEPPER SETTTINGS#######
 
 STEPPER_RES = "1" #The resolution of the stepper motor could be 1, 1/2, 1/4. 1/8. 1/16. 1/32
-STEPPER_MAX = 0.004 #The fastest speed the stepper motor can go before chopping
+STEPPER_MAX = 0.001 #The fastest speed the stepper motor can go before chopping
 STEPPER_MIN = 1 #The lowest reasonable speed for the stepper
 STEPPER_DEFAULT = .01 #Speed for default operations
 #STEPPER_FRAME_DEGREE = 22.5

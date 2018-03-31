@@ -373,6 +373,21 @@ class Stepper():
 
 
 
+class Camera():
+    
+    def __init__(self, pi, camera_pin=config.GPIO_CAMERA_SHUTTER):
+        self.pi = pi
+        self.camera_pin = camera_pin
+
+    def shutter(self):
+
+        current_state = self.pi.read(self.camera_pin)
+
+        self.pi.write(self.camera_pin, not current_state)
+
+        time.sleep(.05)
+
+        self.pi.write(self.camera_pin, current_state)
 
 
 class PhotoGate():

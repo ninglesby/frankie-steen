@@ -551,6 +551,10 @@ class Knob():
 
         return mapped_value
 
+    def get_real_value(self):
+
+        return self.adc.read_adc(self.pin, gain=self.gain)
+
     def cleanup(self):
 
         return True

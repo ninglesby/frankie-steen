@@ -94,6 +94,7 @@ def main():
                                                 mode0_pin=config.GPIO_STEPPER_2_MODE0,
                                                 mode1_pin=config.GPIO_STEPPER_2_MODE1,
                                                 mode2_pin=config.GPIO_STEPPER_2_MODE2 )
+    cleaner.cleanup_list.append(stepper_sprocket_02)
 
     motor_takeup = physical_control.Stepper(    pi=pi,
                                                 logger=frankies_log,
@@ -108,7 +109,13 @@ def main():
     knob_select = interface.Knob(   pin=config.ADC_KNOB_0, adc=adc, mode=config.ADC_KNOB_SELECT, selections=2 )
     cleaner.cleanup_list.append(knob_select)
 
-    knob_motor = interface.Knob(   pin=config.ADC_KNOB_2, adc=adc, mode=config.ADC_KNOB_SWEEP, sweep_range=[0.0,1.0], hard_limit=True )
+    knob_motor = interface.Knob(    pin=config.ADC_KNOB_2,
+                                    adc=adc,
+                                    mode=config.ADC_KNOB_SWEEP,
+                                    knob_hi=24000,
+                                    knob_lo=13000,
+                                    sweep_range=[0.0,1.0],
+                                    hard_limit=True )
     cleaner.cleanup_list.append(knob_motor)
     
     blue_light = interface.Light(   pi=pi,
@@ -139,6 +146,8 @@ def main():
                                         PULL_UP_DOWN="UP")
     cleaner.cleanup_list.append(btn_calibrate)
 
+    camera = physical_control.Camera(pi=pi)
+
 
     last_warning = ""
     advancing = False
@@ -153,22 +162,22 @@ def main():
                                                     knob_motor.sweep_range[1],
                                                     0,
                                                     255,
-                                                    "EXP")
-
-            motor_dutycycle -= 30
+                                                    "LINEAR")
+            #################THIS IS FOR YOU PAT!!!###############################
+            motor_dutycycle = 100 - motor_dutycycle################################################MOTOR SPEED
 
             if motor_dutycycle < 0:
                 motor_dutycycle = 0
 
             motor_takeup.dc_motor(dutycycle=motor_dutycycle)
-                                                                
+            #pi.write(config.GPIO_STEPPER_1_ON, 0)                                                 
 
             if knob_select.get_selection() == 1:
 
 
 
                 if not stepper_sprocket_01.steps and not stepper_sprocket_02.steps and not advancing:
-                    display.message(title="RUN MODE")
+                    #display.message(title="RUN MODE")
 
                     step_index = int( helpers.translate(    knob_spring.get_value(),
                                                             knob_spring.sweep_range[0],
@@ -191,13 +200,21 @@ def main():
 
                     advancing = False
 
-
+                    motor_takeup.dc_motor(dutycycle=0)
+                    pi.write(config.GPIO_STEPPER_1_ON, 0)
                     frame_count, lifetime_frame_count = helpers.increment_frame_count()
+
+
+
+                    camera.shutter()
+
 
                     frankies_log.info("Captured Frame: %s. Lifetime Capture: %s Frames" % (str(frame_count), lifetime_frame_count))
                     display.message(text=["Captured Frame", str(frame_count), "Lifetime Capture", str(lifetime_frame_count), "Frames"])
 
-                    time.sleep(.5)
+                    time.sleep(.500)
+
+
 
                 else:
 
