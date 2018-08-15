@@ -101,6 +101,10 @@ def main():
         stepper_sprocket_01.turn_on()
         while True:
             stepper_sprocket_01.advance_frame()
+
+            while stepper_sprocket_01.steps:
+                stepper_sprocket_01.steps -= 1
+                stepper_sprocket_01.one_step()
             
             raw_input("Press Key for Next Step")
 
