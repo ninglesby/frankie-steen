@@ -337,6 +337,8 @@ class Stepper():
         if self.mode2_pin:
             self.pi.write(self.mode2_pin, 0)
 
+        return True
+
     def generate_speeds(self, rows, columns):
 
         if self.logger:

@@ -8,8 +8,11 @@ import Adafruit_ADS1x15
 import pigpio
 
 import config
-import physical_control_v2 as physical_control
-import interface_v2 as interface
+import physical_control
+
+
+
+import interface
 import helpers
 
 
