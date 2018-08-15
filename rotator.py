@@ -96,11 +96,13 @@ def main():
     last_warning = ""
     advancing = False
 
-    stepper_sprocket_01.max_speed = 1
+    stepper_sprocket_01.max_speed = .1
     try:
         stepper_sprocket_01.turn_on()
         while True:
-            stepper_sprocket_01.one_step()
+            stepper_sprocket_01.advance_frame():
+            
+            raw_input("Press Key for Next Step")
 
 
     except KeyboardInterrupt:

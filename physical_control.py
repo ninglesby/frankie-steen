@@ -83,6 +83,7 @@ class Stepper():
         self.frequency = 800
         self.translate_mode = translate_mode #change how we interpret speed
         self.dutycycle = 0
+        self.stepper_frame_degree = config.STEPPER_FRAME_DEGREE
         
 
 
@@ -243,7 +244,7 @@ class Stepper():
 
         steps_per_degree = ( config.STEPPER_TOTAL_STEPS / self.step_res_float ) / 360.0
 
-        self.steps = int(config.STEPPER_FRAME_DEGREE * steps_per_degree)
+        self.steps = int(self.stepper_frame_degree * steps_per_degree)
 
         self.logger.debug("Advance Frame by %s" % str(self.steps))
 
