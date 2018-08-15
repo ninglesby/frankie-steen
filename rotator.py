@@ -96,7 +96,7 @@ def main():
     last_warning = ""
     advancing = False
 
-
+    stepper_sprocket_01.max_speed = 1
     try:
         stepper_sprocket_01.turn_on()
         while True:
