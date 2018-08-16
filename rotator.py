@@ -96,13 +96,15 @@ def main():
     last_warning = ""
     advancing = False
 
-    stepper_sprocket_01.max_speed = .1
+    speed = float(raw_input("Enter Speed in seconds (Lower = Faster)"))
+    stepper_sprocket_01.max_speed = speed
+    steps_per_frame = int(raw_input("Enter Steps Per Frame"))
     try:
         stepper_sprocket_01.turn_on()
         while True:
             stepper_sprocket_01.advance_frame()
 
-            while stepper_sprocket_01.steps:
+            for x in range(steps_per_frame):
                 stepper_sprocket_01.steps -= 1
                 stepper_sprocket_01.one_step()
             
