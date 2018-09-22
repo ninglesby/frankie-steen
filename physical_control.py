@@ -184,7 +184,8 @@ class Stepper():
             else:
                 print "Stepper power on"
 
-        self.pi.write(self.on_pin, 1)
+        #self.pi.write(self.on_pin, 1)
+        self.pi.write(self.on_pin, 0)
         self.energized = 1
 
     def turn_off(self):
@@ -196,8 +197,9 @@ class Stepper():
             else:
                 print "Stepper powered off"
 
-        self.pi.write(self.on_pin, 0)
-
+        #self.pi.write(self.on_pin, 0)
+        self.pi.write(self.on_pin, 1)
+        
         self.energized = 0
 
     def set_speed(self, speed):
@@ -322,8 +324,11 @@ class Stepper():
         if self.dir_pin:
             self.pi.write(self.dir_pin, 0)
 
+        #if self.on_pin:
+        #    self.pi.write(self.on_pin, 0)
+        
         if self.on_pin:
-            self.pi.write(self.on_pin, 0)
+            self.pi.write(self.on_pin, 1)
 
         if self.step_pin: 
             self.pi.write(self.step_pin, 0)
@@ -384,6 +389,7 @@ class Camera():
     def __init__(self, pi, camera_pin=config.GPIO_CAMERA_SHUTTER):
         self.pi = pi
         self.camera_pin = camera_pin
+        self.pi.write(self.camera_pin, 0)
 
     def shutter(self):
 

@@ -96,19 +96,40 @@ def main():
     last_warning = ""
     advancing = False
 
-    speed = float(raw_input("Enter Speed in seconds (Lower = Faster)"))
+    if raw_input("Use Default(y/n? ") == 'y':
+        speed = .001
+        steps_per_frame = 291
+        camera_pause = .5
+        photo_count = 10
+    else:
+        speed = float(raw_input("Enter Speed in seconds (Lower = Faster)"))
+        steps_per_frame = int(raw_input("Enter Steps Per Frame"))
+        camera_pause = float(raw_input("Camera Pause Duration"))
+        photo_count = int(raw_input("Number of Photos"))
+        
     stepper_sprocket_01.max_speed = speed
-    steps_per_frame = int(raw_input("Enter Steps Per Frame"))
+    
     try:
         stepper_sprocket_01.turn_on()
         while True:
-            stepper_sprocket_01.advance_frame()
-
-            for x in range(steps_per_frame):
-                stepper_sprocket_01.steps -= 1
-                stepper_sprocket_01.one_step()
             
-            raw_input("Press Key for Next Step")
+            for y in range(photo_count):
+                
+                camera.shutter()
+                time.sleep(camera_pause)
+
+                for x in range(steps_per_frame):
+     
+                    stepper_sprocket_01.one_step()
+        
+            camera.shutter()
+            time.sleep(camera_pause)
+        
+            frankies_log.info("Series Complete - Returning to Start Position")
+            for x in range(steps_per_frame):
+
+                stepper_sprocket_01.one_step()
+            raw_input("Press Key for Next Set")
 
 
     except KeyboardInterrupt:
